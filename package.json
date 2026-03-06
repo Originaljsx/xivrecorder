@@ -1,0 +1,53 @@
+{
+  "name": "xiv-recorder",
+  "version": "0.1.0",
+  "description": "Automatic FFXIV PvP gameplay recorder using IINACT logs",
+  "productName": "XIVRecorder",
+  "keywords": ["ffxiv", "final fantasy", "pvp", "crystalline conflict", "recorder"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jacobaw/xivrecorder.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Jacob"
+  },
+  "main": "./src/main/main.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --coverage",
+    "lint": "tsc --noEmit",
+    "start": "ts-node src/main/main.ts"
+  },
+  "build": {
+    "productName": "XIVRecorder",
+    "appId": "org.XIVRecorder",
+    "asar": true,
+    "win": {
+      "artifactName": "XIVRecorder-Setup-${version}.exe",
+      "target": ["nsis"]
+    },
+    "extraResources": ["./assets/**"]
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/src"],
+    "moduleNameMapper": {
+      "^utils/(.*)$": "<rootDir>/src/utils/$1",
+      "^config/(.*)$": "<rootDir>/src/config/$1",
+      "^main/(.*)$": "<rootDir>/src/main/$1"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
