@@ -225,6 +225,7 @@ export default class VideoProcessQueue {
         data.suffix,
         data.offset,
         data.duration,
+        data.clip,
       );
 
       await writeMetadataFile(videoPath, data.metadata);
@@ -565,6 +566,7 @@ export default class VideoProcessQueue {
     suffix: string | undefined,
     offset: number,
     duration: number,
+    clip: boolean,
   ): Promise<string> {
     console.info('[VideoProcessQueue] Cutting video:', {
       srcFile,
@@ -572,6 +574,7 @@ export default class VideoProcessQueue {
       suffix,
       offset,
       duration,
+      clip,
     });
 
     let start = offset;
@@ -587,9 +590,8 @@ export default class VideoProcessQueue {
       suffix,
     );
 
-    const fn = ffmpeg(srcFile)
+    let fn = ffmpeg(srcFile)
       .setStartTime(start)
-      .setDuration(duration)
       // Crucially we copy the video and audio, so we don't do any
       // re-encoding which would take time and CPU.
       .withVideoCodec('copy')
@@ -602,6 +604,14 @@ export default class VideoProcessQueue {
       // This means R2 doesn't need to seek to the end to start playback.
       .outputOption('-movflags +faststart')
       .output(outputPath);
+
+    // Only apply duration trimming for clips. For regular recordings, the
+    // OBS file is already stopped at the right time, but may include
+    // pre-match buffer content at the start. Trimming by duration would
+    // cut off the end of the match by the amount of buffer included.
+    if (clip) {
+      fn = fn.setDuration(duration);
+    }
 
     console.time('[VideoProcessQueue] Video cut took:');
     await VideoProcessQueue.ffmpegWrapper(fn, 'Video cut');
