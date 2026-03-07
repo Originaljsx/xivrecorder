@@ -8,7 +8,7 @@
  *
  * Adapted from wow-recorder's CombatLogWatcher.
  */
-import { EventEmitter } from 'stream';
+import { EventEmitter } from 'events';
 import fs, { watch, FSWatcher } from 'fs';
 import util from 'util';
 import path from 'path';
@@ -145,7 +145,7 @@ export default class IINACTLogWatcher extends EventEmitter {
     const handle = await open(file, 'r');
 
     try {
-      const { bytesRead } = await read(handle, buffer, 0, bytes, position);
+      const { bytesRead } = await read(handle, buffer as unknown as Uint8Array, 0, bytes, position);
 
       if (bytesRead !== bytes) {
         console.warn(

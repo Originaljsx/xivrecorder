@@ -1,27 +1,33 @@
-/**
- * Translation management for xiv-recorder.
- */
-import { Phrase } from './phrases';
-import { ENGLISH, Translations } from './english';
+import { VideoCategory } from '../types/VideoCategory';
+import { Language, LocalizationDataType, Phrase } from './phrases';
+import EnglishTranslations from './english';
+import KoreanTranslations from './korean';
+import GermanTranslations from './german';
+import ChineseSimplifiedTranslations from './chineseSimplified';
 
-const translations: Record<string, Translations> = {
-  English: ENGLISH,
+const data: LocalizationDataType = {
+  [Language.ENGLISH]: EnglishTranslations,
+  [Language.KOREAN]: KoreanTranslations,
+  [Language.GERMAN]: GermanTranslations,
+  [Language.CHINESE_SIMPLIFIED]: ChineseSimplifiedTranslations,
 };
 
-/**
- * Get a translated phrase. Falls back to English if not found.
- */
-export function getLocalePhrase(
-  language: string,
-  phrase: Phrase,
-): string {
-  const localeStrings = translations[language] || translations.English;
-  return localeStrings[phrase] || ENGLISH[phrase] || phrase;
-}
+const getLocalePhrase = (lang: Language, phrase: Phrase) => data[lang][phrase];
 
-/**
- * Get all available languages.
- */
-export function getAvailableLanguages(): string[] {
-  return Object.keys(translations);
-}
+const getLocaleCategoryLabel = (
+  lang: Language,
+  videoCategory: VideoCategory,
+) => {
+  switch (videoCategory) {
+    case VideoCategory.CrystallineConflict:
+      return 'Crystalline Conflict';
+    case VideoCategory.Manual:
+      return getLocalePhrase(lang, Phrase.VideoCategoryManualLabel);
+    case VideoCategory.Clips:
+      return getLocalePhrase(lang, Phrase.VideoCategoryClipsLabel);
+    default:
+      throw new Error('Unrecognized category');
+  }
+};
+
+export { getLocalePhrase, getLocaleCategoryLabel, Language };

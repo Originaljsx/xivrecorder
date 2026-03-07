@@ -1,25 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "incremental": true,
+    "target": "es2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "lib": ["dom", "es2022"],
+    "jsx": "react-jsx",
     "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
     "sourceMap": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "outDir": ".erb/dll",
     "baseUrl": "./src",
-    "paths": {
-      "utils/*": ["utils/*"],
-      "config/*": ["config/*"],
-      "main/*": ["main/*"]
-    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/__tests__"]
+  "exclude": ["test", "release/build", "release/app/dist", ".erb/dll"]
 }

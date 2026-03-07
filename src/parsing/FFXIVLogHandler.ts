@@ -4,17 +4,18 @@
  * Watches IINACT log events and manages the CC match activity lifecycle.
  *
  * CC Match Lifecycle (from actual IINACT log analysis):
- *   1. Zone change (type 01) to a CC territory → prepare for match
- *   2. AddCombatant (type 03) events → collect player info and teams
- *   3. ActorControl (type 33) command 40000001 → match start
- *   4. ActorControl (type 33) command 40000002 → match end
- *   5. Zone change away from CC territory → force stop if still active
+ *   1. Zone change (type 01) to a CC territory -> prepare for match
+ *   2. AddCombatant (type 03) events -> collect player info and teams
+ *   3. ActorControl (type 33) command 40000001 -> match start
+ *   4. ActorControl (type 33) command 40000002 -> match end
+ *   5. Zone change away from CC territory -> force stop if still active
  *
  * Player identification:
  *   - ChangePrimaryPlayer (type 02) provides the player's entity ID
  *   - AddCombatant (type 03) provides job, world, position for team detection
  *   - Teams determined by spawn X position (positive = Astra, negative = Umbra)
  */
+import { EventEmitter } from 'events';
 import LogHandler from './LogHandler';
 import IINACTLogWatcher from './IINACTLogWatcher';
 import ACTLogLine from './ACTLogLine';
@@ -27,7 +28,7 @@ import {
   getTeamFromPosition,
 } from './ffxivutils';
 
-export default class FFXIVLogHandler extends LogHandler {
+export default class FFXIVLogHandler extends EventEmitter {
   private watcher: IINACTLogWatcher;
 
   /** The player's own entity ID, from ChangePrimaryPlayer (type 02). */
@@ -68,6 +69,15 @@ export default class FFXIVLogHandler extends LogHandler {
   async stop() {
     await this.watcher.unwatch();
     console.info('[FFXIVLogHandler] Stopped watching IINACT logs');
+  }
+
+  /**
+   * Clean up resources.
+   */
+  destroy() {
+    this.watcher.unwatch();
+    this.watcher.removeAllListeners();
+    this.removeAllListeners();
   }
 
   private setupEventHandlers() {
@@ -273,7 +283,7 @@ export default class FFXIVLogHandler extends LogHandler {
   /**
    * Start a CC match activity.
    */
-  private startCCMatch(timestamp: Date) {
+  private async startCCMatch(timestamp: Date) {
     if (!this.currentZoneId || !isCCTerritory(this.currentZoneId)) {
       console.warn(
         '[FFXIVLogHandler] Commence received but not in a CC zone',
@@ -300,7 +310,7 @@ export default class FFXIVLogHandler extends LogHandler {
       }
     }
 
-    LogHandler.startActivity(match);
+    await LogHandler.startActivity(match);
     this.matchStarted = true;
     this.emit('activity-start', match);
   }
@@ -308,7 +318,7 @@ export default class FFXIVLogHandler extends LogHandler {
   /**
    * End the current CC match.
    */
-  private endCCMatch(timestamp: Date, normal: boolean) {
+  private async endCCMatch(timestamp: Date, normal: boolean) {
     if (!LogHandler.activity) {
       console.warn('[FFXIVLogHandler] endCCMatch called with no active activity');
       return;
@@ -321,14 +331,14 @@ export default class FFXIVLogHandler extends LogHandler {
     console.info(
       '[FFXIVLogHandler] Match ended.',
       `Duration: ${metadata.duration.toFixed(1)}s`,
-      `Deaths: ${metadata.deaths.length}`,
+      `Deaths: ${metadata.deaths?.length ?? 0}`,
       `Combatants: ${metadata.combatants.length}`,
     );
 
     this.emit('activity-end', LogHandler.activity);
 
     if (normal) {
-      LogHandler.endActivity();
+      await LogHandler.endActivity();
     } else {
       // Force end — activity already has endDate set, just clear state.
       LogHandler.overrunning = false;
