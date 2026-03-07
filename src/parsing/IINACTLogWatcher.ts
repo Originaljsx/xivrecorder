@@ -27,11 +27,13 @@ interface FileState {
 export default class IINACTLogWatcher extends EventEmitter {
   private logDir: string;
   private watcher?: FSWatcher;
+  private pollTimer?: ReturnType<typeof setInterval>;
   private timeout: number;
   private timer?: NodeJS.Timeout;
   private state: Record<string, FileState> = {};
   private queue = new AsyncQueue(Number.MAX_SAFE_INTEGER);
   private current = '';
+  private linesRead = 0;
 
   constructor(logDir: string, timeoutMinutes: number) {
     super();
@@ -45,25 +47,50 @@ export default class IINACTLogWatcher extends EventEmitter {
   public async watch() {
     await this.getLogDirectoryState();
 
-    this.watcher = watch(this.logDir);
+    // Identify the newest log file as current
+    this.current = this.findNewestLogFile();
 
-    this.watcher.on('change', (_type, file) => {
-      if (typeof file !== 'string') return;
-      if (!file.startsWith('Network_') || !file.endsWith('.log')) return;
+    const fileCount = Object.keys(this.state).length;
+    console.info(
+      `[IINACTLogWatcher] Watching ${this.logDir} (${fileCount} log files, current: ${this.current || 'none'}, polling every 1000ms)`,
+    );
 
-      if (file !== this.current) {
-        console.info('[IINACTLogWatcher] New active log file:', file);
-        this.current = file;
-      }
+    // Primary: poll every 1s (reliable on all systems including OneDrive)
+    this.pollTimer = setInterval(() => this.pollCurrentFile(), 1000);
 
-      this.queue.add(() => this.process(file));
-    });
+    // Bonus: fs.watch for lower-latency detection when it works
+    try {
+      this.watcher = watch(this.logDir);
+
+      this.watcher.on('change', (_type, file) => {
+        if (typeof file !== 'string') return;
+        if (!file.startsWith('Network_') || !file.endsWith('.log')) return;
+
+        if (file !== this.current) {
+          console.info('[IINACTLogWatcher] New active log file:', file);
+          this.current = file;
+        }
+
+        this.queue.add(() => this.process(file));
+      });
+
+      this.watcher.on('error', (err) => {
+        console.warn('[IINACTLogWatcher] fs.watch error (polling still active):', err.message);
+      });
+    } catch (e) {
+      console.warn('[IINACTLogWatcher] fs.watch failed, using polling only:', (e as Error).message);
+    }
   }
 
   /**
    * Stop watching.
    */
   public async unwatch() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;
@@ -105,6 +132,61 @@ export default class IINACTLogWatcher extends EventEmitter {
       } catch {
         // File may have been deleted between readdir and stat.
       }
+    }
+  }
+
+  /**
+   * Find the newest Network_*.log file by name (they sort chronologically).
+   */
+  private findNewestLogFile(): string {
+    const paths = Object.keys(this.state).sort();
+    if (paths.length === 0) return '';
+    const newest = paths[paths.length - 1];
+    return path.basename(newest);
+  }
+
+  /**
+   * Poll the current log file for new bytes. Also checks for new/rotated files.
+   */
+  private async pollCurrentFile() {
+    try {
+      // Check for new log files (rotation at midnight)
+      const files = await fs.promises.readdir(this.logDir);
+      const logFiles = files
+        .filter((f) => f.startsWith('Network_') && f.endsWith('.log'))
+        .sort();
+
+      if (logFiles.length > 0) {
+        const newest = logFiles[logFiles.length - 1];
+        if (newest !== this.current) {
+          console.info('[IINACTLogWatcher] New active log file:', newest);
+          this.current = newest;
+          // Initialize state for new file
+          const fullPath = path.join(this.logDir, newest);
+          if (!this.state[fullPath]) {
+            this.state[fullPath] = { name: fullPath, size: 0 };
+          }
+        }
+      }
+
+      if (!this.current) return;
+
+      const fullPath = path.join(this.logDir, this.current);
+      let stat;
+      try {
+        stat = await fs.promises.stat(fullPath);
+      } catch {
+        return;
+      }
+
+      const lastState = this.state[fullPath];
+      const lastSize = lastState ? lastState.size : 0;
+
+      if (stat.size > lastSize) {
+        this.queue.add(() => this.process(this.current));
+      }
+    } catch (e) {
+      console.warn('[IINACTLogWatcher] Poll error:', (e as Error).message);
     }
   }
 
@@ -156,7 +238,7 @@ export default class IINACTLogWatcher extends EventEmitter {
         );
       }
     } finally {
-      close(handle);
+      await close(handle);
     }
 
     const lines = buffer
@@ -180,6 +262,13 @@ export default class IINACTLogWatcher extends EventEmitter {
       const logLine = new ACTLogLine(line);
       this.emit(String(logLine.type), logLine);
       this.emit('line', logLine);
+
+      this.linesRead++;
+      if (this.linesRead === 1) {
+        console.info('[IINACTLogWatcher] First log line received, watcher is active');
+      } else if (this.linesRead % 1000 === 0) {
+        console.info(`[IINACTLogWatcher] ${this.linesRead} lines processed`);
+      }
     } catch (e) {
       // Skip malformed lines silently.
     }
