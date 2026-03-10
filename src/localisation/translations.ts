@@ -21,6 +21,8 @@ const getLocaleCategoryLabel = (
   switch (videoCategory) {
     case VideoCategory.CrystallineConflict:
       return 'Crystalline Conflict';
+    case VideoCategory.Raids:
+      return 'Raids';
     case VideoCategory.Manual:
       return getLocalePhrase(lang, Phrase.VideoCategoryManualLabel);
     case VideoCategory.Clips:

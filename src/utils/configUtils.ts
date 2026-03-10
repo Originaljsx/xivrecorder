@@ -39,6 +39,18 @@ const allowRecordCategory = (cfg: ConfigService, category: VideoCategory) => {
     return true;
   }
 
+  if (category === VideoCategory.Raids) {
+    const allowed = cfg.get<boolean>('recordRaids');
+
+    if (!allowed) {
+      console.info('[configUtils] Configured to not record raids');
+      return false;
+    }
+
+    console.info('[configUtils] Good to record raids');
+    return true;
+  }
+
   if (category === VideoCategory.Manual) {
     const allowed = cfg.get<boolean>('manualRecord');
 
@@ -113,6 +125,7 @@ const getBaseConfig = (cfg: ConfigService): BaseConfig => {
     obsRecEncoder,
     iinactLogPath: cfg.get<string>('iinactLogPath'),
     recordCrystallineConflict: cfg.get<boolean>('recordCrystallineConflict'),
+    recordRaids: cfg.get<boolean>('recordRaids'),
   };
 };
 

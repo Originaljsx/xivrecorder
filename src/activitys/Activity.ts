@@ -25,6 +25,9 @@ export default abstract class Activity {
 
   protected _overrun: number = 0;
 
+  /** Seconds of pre-activity buffer to include in the recording. */
+  protected _bufferSeconds: number = 0;
+
   constructor(startDate: Date, category: VideoCategory) {
     this._result = false;
     this._combatantMap = new Map();
@@ -103,6 +106,10 @@ export default abstract class Activity {
   set overrun(s) {
     console.info('[Activity] Setting overrun to', s);
     this._overrun = s;
+  }
+
+  get bufferSeconds() {
+    return this._bufferSeconds;
   }
 
   get duration() {

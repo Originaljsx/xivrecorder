@@ -1,27 +1,32 @@
 /**
- * FFXIV Log Handler — Crystalline Conflict match detection.
+ * FFXIV Log Handler — CC match and raid pull detection.
  *
- * Watches IINACT log events and manages the CC match activity lifecycle.
+ * Watches IINACT log events and manages activity lifecycles for:
+ *   - Crystalline Conflict matches (CC)
+ *   - Raid/trial encounter pulls (PvE)
  *
- * CC Match Lifecycle (from actual IINACT log analysis):
+ * CC Match Lifecycle:
  *   1. Zone change (type 01) to a CC territory -> prepare for match
  *   2. AddCombatant (type 03) events -> collect player info and teams
  *   3. ActorControl (type 33) command 40000001 -> match start
  *   4. ActorControl (type 33) command 40000002 -> match end
- *   5. Zone change away from CC territory -> force stop if still active
  *
- * Player identification:
- *   - ChangePrimaryPlayer (type 02) provides the player's entity ID
- *   - AddCombatant (type 03) provides job, world, position for team detection
- *   - Teams determined by spawn X position (positive = Astra, negative = Umbra)
+ * Raid Pull Lifecycle:
+ *   1. Zone change (type 01) to an instanced duty
+ *   2. ActorControl COMMENCE (40000001) in non-CC zone -> duty instance detected
+ *   3. InCombat (type 260) inGameCombat 0→1 -> pull start
+ *   4. InCombat inGameCombat 1→0 -> pull end
+ *   5. ActorControl VICTORY (40000003) / FADE_OUT (40000005) -> result
  */
 import { EventEmitter } from 'events';
 import LogHandler from './LogHandler';
 import IINACTLogWatcher from './IINACTLogWatcher';
 import ACTLogLine from './ACTLogLine';
 import CCMatch from '../activitys/CCMatch';
+import RaidEncounter from '../activitys/RaidEncounter';
 import Combatant from '../main/Combatant';
 import { ActorControlType } from '../main/constants';
+import { VideoCategory } from '../types/VideoCategory';
 import {
   isCCTerritory,
   isPlayerEntity,
@@ -48,6 +53,24 @@ export default class FFXIVLogHandler extends EventEmitter {
 
   /** Whether match has formally started via ActorControl commence. */
   private matchStarted = false;
+
+  /** Entity ID of the Tactical Crystal in the current match. */
+  private crystalEntityId: string | undefined;
+
+  /** Last known X position of the Tactical Crystal. */
+  private crystalLastX: number | undefined;
+
+  /** Whether we're in a duty instance (received COMMENCE in non-CC zone). */
+  private inDutyInstance = false;
+
+  /** Whether the player is currently in game combat (from InCombat type 260). */
+  private inGameCombat = false;
+
+  /** Pull counter within the current duty instance. */
+  private pullCount = 0;
+
+  /** Raid pull result, set by VICTORY/FADE_OUT before InCombat drops. */
+  private raidResult: boolean | undefined;
 
   constructor(logDir: string) {
     super();
@@ -95,6 +118,12 @@ export default class FFXIVLogHandler extends EventEmitter {
 
     // Type 25: NetworkDeath
     this.watcher.on('25', (line: ACTLogLine) => this.handleNetworkDeath(line));
+
+    // Type 260: InCombat (tracks combat state for raid pulls)
+    this.watcher.on('260', (line: ACTLogLine) => this.handleInCombat(line));
+
+    // Type 270: NpcPosition (tracks Tactical Crystal movement)
+    this.watcher.on('270', (line: ACTLogLine) => this.handleNpcPosition(line));
 
     // Timeout — force stop if no activity for a long time
     this.watcher.on('timeout', () => {
@@ -153,6 +182,17 @@ export default class FFXIVLogHandler extends EventEmitter {
       // But emit an event so the recorder can start buffering.
       this.emit('start-buffer');
     } else {
+      // Force-end any active raid pull on zone change.
+      if (this.inDutyInstance || this.inGameCombat) {
+        console.info('[FFXIVLogHandler] Left duty instance zone');
+
+        if (LogHandler.isActivityInProgress() && !LogHandler.overrunning) {
+          this.endRaidPull(new Date(), false);
+        }
+
+        this.resetRaidState();
+      }
+
       if (this.inCCZone || LogHandler.isActivityInProgress()) {
         console.info('[FFXIVLogHandler] Left CC zone');
         this.inCCZone = false;
@@ -179,11 +219,19 @@ export default class FFXIVLogHandler extends EventEmitter {
     if (!this.inCCZone) return;
 
     const entityId = line.field(0);
+    const name = line.field(1);
+
+    // Detect the Tactical Crystal NPC for result tracking.
+    if (name === 'Tactical Crystal') {
+      this.crystalEntityId = entityId;
+      this.crystalLastX = undefined;
+      console.info('[FFXIVLogHandler] Tactical Crystal detected:', entityId);
+      return;
+    }
 
     // Only care about player entities (10xxxxxx), not NPCs (40xxxxxx).
     if (!isPlayerEntity(entityId)) return;
 
-    const name = line.field(1);
     const jobIdHex = line.field(2);
     const jobId = parseInt(jobIdHex, 16);
     const level = line.fieldInt(3);
@@ -244,16 +292,33 @@ export default class FFXIVLogHandler extends EventEmitter {
       );
       this.emit('preparation', countdownSec);
     } else if (command === ActorControlType.COMMENCE) {
-      const timerSec = line.fieldHex(2);
-      console.info(
-        '[FFXIVLogHandler] CC match commence! Timer:',
-        timerSec,
-        'seconds',
-      );
-      this.startCCMatch(line.timestamp);
+      if (this.inCCZone) {
+        const timerSec = line.fieldHex(2);
+        console.info(
+          '[FFXIVLogHandler] CC match commence! Timer:',
+          timerSec,
+          'seconds',
+        );
+        this.startCCMatch(line.timestamp);
+      } else {
+        // COMMENCE in a non-CC zone = duty instance (raid/trial).
+        console.info('[FFXIVLogHandler] Duty instance commenced');
+        this.inDutyInstance = true;
+        this.pullCount = 0;
+        this.raidResult = undefined;
+      }
     } else if (command === ActorControlType.MATCH_END) {
       console.info('[FFXIVLogHandler] CC match ended');
       this.endCCMatch(line.timestamp, true);
+    } else if (command === ActorControlType.VICTORY) {
+      console.info('[FFXIVLogHandler] Victory detected (boss killed)');
+      this.raidResult = true;
+    } else if (command === ActorControlType.FADE_OUT) {
+      console.info('[FFXIVLogHandler] Fade out detected (wipe)');
+      this.raidResult = false;
+    } else if (command === ActorControlType.RECOMMENCE) {
+      console.info('[FFXIVLogHandler] Recommence (ready for next pull)');
+      this.raidResult = undefined;
     }
   }
 
@@ -262,7 +327,7 @@ export default class FFXIVLogHandler extends EventEmitter {
    * Format: 25|timestamp|targetId|targetName|sourceId|sourceName|hash
    */
   private handleNetworkDeath(line: ACTLogLine) {
-    if (!LogHandler.activity || !this.matchStarted) return;
+    if (!LogHandler.activity || (!this.matchStarted && !this.inGameCombat)) return;
 
     const targetId = line.field(0);
     const targetName = line.field(1);
@@ -278,6 +343,156 @@ export default class FFXIVLogHandler extends EventEmitter {
     });
 
     console.debug('[FFXIVLogHandler] Player death:', targetName, 'by', sourceName);
+  }
+
+  /**
+   * Type 270: NpcPosition
+   * Format: 270|timestamp|entityId|heading|flag1|flag2|posX|posY|posZ|hash
+   *
+   * Tracks the Tactical Crystal position to determine match result.
+   */
+  private handleNpcPosition(line: ACTLogLine) {
+    if (!this.crystalEntityId) return;
+
+    const entityId = line.field(0);
+    if (entityId !== this.crystalEntityId) return;
+
+    this.crystalLastX = line.fieldFloat(4);
+  }
+
+  /**
+   * Determine CC match result from crystal position and player team.
+   * Crystal pushed to negative X = Astra wins, positive X = Umbra wins.
+   * Returns true if the player's team won.
+   */
+  private determineCCResult(): boolean {
+    if (this.crystalLastX === undefined || !this.playerEntityId) {
+      console.warn('[FFXIVLogHandler] Cannot determine result: missing crystal position or player');
+      return false;
+    }
+
+    const player = LogHandler.activity?.getCombatant(this.playerEntityId);
+    if (!player?.teamId) {
+      console.warn('[FFXIVLogHandler] Cannot determine result: player team unknown');
+      return false;
+    }
+
+    // Crystal at negative X = pushed toward Umbra side = Astra (team 1) wins
+    // Crystal at positive X = pushed toward Astra side = Umbra (team 2) wins
+    const astraWon = this.crystalLastX < 0;
+    const playerIsAstra = player.teamId === 1;
+    const playerWon = astraWon === playerIsAstra;
+
+    console.info(
+      '[FFXIVLogHandler] Match result:',
+      `crystal X=${this.crystalLastX.toFixed(2)}`,
+      `${astraWon ? 'Astra' : 'Umbra'} wins,`,
+      `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
+      `result=${playerWon ? 'WIN' : 'LOSS'}`,
+    );
+
+    return playerWon;
+  }
+
+  /**
+   * Type 260: InCombat
+   * Format: 260|timestamp|inACTCombat|inGameCombat|isACTChanged|isGameChanged|hash
+   *
+   * Tracks in-game combat state for raid pull detection.
+   */
+  private handleInCombat(line: ACTLogLine) {
+    // Only care about duty instances, not CC zones.
+    if (!this.inDutyInstance || this.inCCZone) return;
+
+    const inGameCombat = line.field(1) === '1';
+
+    if (inGameCombat && !this.inGameCombat) {
+      // Combat started — begin a new pull.
+      this.inGameCombat = true;
+      this.pullCount++;
+      console.info(
+        '[FFXIVLogHandler] Combat started, pull',
+        this.pullCount,
+      );
+      this.startRaidPull(line.timestamp);
+    } else if (!inGameCombat && this.inGameCombat) {
+      // Combat ended — end the pull.
+      // Use Date.now() to stay consistent with startRaidPull (wall clock time).
+      this.inGameCombat = false;
+      console.info('[FFXIVLogHandler] Combat ended');
+      this.endRaidPull(new Date(), true);
+    }
+  }
+
+  /**
+   * Start a raid pull activity.
+   */
+  private async startRaidPull(_timestamp: Date) {
+    if (LogHandler.isActivityInProgress()) {
+      console.warn('[FFXIVLogHandler] Pull start but activity already in progress');
+      return;
+    }
+
+    // Use current time as the actual combat start for duration calculation.
+    // The 5-second pre-pull buffer is handled via the Activity's bufferSeconds.
+    const now = new Date();
+
+    const encounter = new RaidEncounter(
+      now,
+      this.currentZoneId!,
+      this.currentZoneName || 'Unknown',
+      this.pullCount,
+    );
+
+    if (this.playerEntityId) {
+      encounter.playerEntityId = this.playerEntityId;
+    }
+
+    await LogHandler.startActivity(encounter);
+    this.emit('activity-start', encounter);
+  }
+
+  /**
+   * End the current raid pull.
+   */
+  private async endRaidPull(timestamp: Date, normal: boolean) {
+    if (!LogHandler.activity) {
+      console.warn('[FFXIVLogHandler] endRaidPull called with no active activity');
+      return;
+    }
+
+    const result = this.raidResult ?? false;
+    LogHandler.activity.end(timestamp, result);
+
+    const metadata = LogHandler.activity.getMetadata();
+    console.info(
+      '[FFXIVLogHandler] Pull ended.',
+      `Duration: ${metadata.duration.toFixed(1)}s`,
+      `Result: ${result ? 'KILL' : 'WIPE'}`,
+      `Deaths: ${metadata.deaths?.length ?? 0}`,
+    );
+
+    this.emit('activity-end', LogHandler.activity);
+
+    if (normal) {
+      await LogHandler.endActivity();
+    } else {
+      LogHandler.overrunning = false;
+      LogHandler.activity = undefined;
+    }
+
+    // Reset result for next pull.
+    this.raidResult = undefined;
+  }
+
+  /**
+   * Reset raid-related state.
+   */
+  private resetRaidState() {
+    this.inDutyInstance = false;
+    this.inGameCombat = false;
+    this.pullCount = 0;
+    this.raidResult = undefined;
   }
 
   /**
@@ -324,8 +539,9 @@ export default class FFXIVLogHandler extends EventEmitter {
       return;
     }
 
-    // Set end time on the activity.
-    LogHandler.activity.end(timestamp, LogHandler.activity.result);
+    // Determine match result from crystal position.
+    const result = this.determineCCResult();
+    LogHandler.activity.end(timestamp, result);
 
     const metadata = LogHandler.activity.getMetadata();
     console.info(
@@ -354,6 +570,9 @@ export default class FFXIVLogHandler extends EventEmitter {
   private resetMatchState() {
     this.matchStarted = false;
     this._pendingCombatants = undefined;
+    this.crystalEntityId = undefined;
+    this.crystalLastX = undefined;
+    this.resetRaidState();
   }
 
   /**

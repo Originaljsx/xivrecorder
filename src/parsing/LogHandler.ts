@@ -61,7 +61,10 @@ export default class LogHandler {
     // Offset is the number of seconds to cut back into the buffer. That way
     // the buffer length is irrelevant. It is physically impossible to have
     // a negative offset. That would mean an activity started in the future.
-    const offset = (Date.now() - activity.startDate.getTime()) / 1000;
+    // bufferSeconds adds extra pre-activity content (e.g. 5s before a pull).
+    const offset =
+      (Date.now() - activity.startDate.getTime()) / 1000 +
+      activity.bufferSeconds;
     console.info(`[LogHandler] Calculated offset seconds`, offset);
     assert(offset >= 0);
 

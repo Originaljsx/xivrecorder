@@ -18,6 +18,7 @@ export type ConfigurationSchema = {
   obsCaptureMode: string;
   obsRecEncoder: string;
   recordCrystallineConflict: boolean;
+  recordRaids: boolean;
   captureCursor: boolean;
   minimizeOnQuit: boolean;
   minimizeToTray: boolean;
@@ -159,6 +160,11 @@ export const configSchema: Record<string, any> = {
   },
   recordCrystallineConflict: {
     description: 'Record Crystalline Conflict matches',
+    type: 'boolean',
+    default: true,
+  },
+  recordRaids: {
+    description: 'Record raid and trial boss pulls',
     type: 'boolean',
     default: true,
   },

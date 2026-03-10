@@ -307,6 +307,7 @@ type BaseConfig = {
   obsRecEncoder: string;
   iinactLogPath: string;
   recordCrystallineConflict: boolean;
+  recordRaids: boolean;
 };
 
 type ObsVideoConfig = {

@@ -98,13 +98,36 @@ const getJobAbbreviation = (jobId: number | undefined): string => {
 };
 
 /**
+ * Convert a death/event timestamp to seconds relative to video start.
+ * Timestamps come from JSON as ISO strings or epoch numbers.
+ */
+const toRelativeSeconds = (
+  timestamp: Date | string | number,
+  videoStart: number,
+): number => {
+  const epoch =
+    typeof timestamp === 'number'
+      ? timestamp
+      : new Date(timestamp).getTime();
+  return Math.max(0, (epoch - videoStart) / 1000);
+};
+
+/**
+ * Get the video start epoch from metadata.
+ */
+const getVideoStartEpoch = (video: RendererVideo): number => {
+  return video.date || video.start || 0;
+};
+
+/**
  * Return an array of death markers for a video.
  */
 const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
   const videoMarkers: VideoMarker[] = [];
   const { player } = video;
+  const videoStart = getVideoStartEpoch(video);
 
-  if (video.deaths === undefined) {
+  if (video.deaths === undefined || !videoStart) {
     return videoMarkers;
   }
 
@@ -120,7 +143,7 @@ const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
 
     if (player._name === name) {
       videoMarkers.push({
-        time: death.timestamp as unknown as number,
+        time: toRelativeSeconds(death.timestamp, videoStart),
         text: markerText,
         color,
         duration: 5,
@@ -136,8 +159,9 @@ const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
  */
 const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
   const videoMarkers: VideoMarker[] = [];
+  const videoStart = getVideoStartEpoch(video);
 
-  if (video.deaths === undefined) {
+  if (video.deaths === undefined || !videoStart) {
     return videoMarkers;
   }
 
@@ -148,11 +172,37 @@ const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
     const color = MarkerColors.LOSS;
 
     videoMarkers.push({
-      time: death.timestamp as unknown as number,
+      time: toRelativeSeconds(death.timestamp, videoStart),
       text: markerText,
       color,
       duration: 5,
     });
+  });
+
+  return videoMarkers;
+};
+
+/**
+ * Return an array of kill markers for a video (when the player kills someone).
+ */
+const getKillMarkers = (video: RendererVideo, language: Language) => {
+  const videoMarkers: VideoMarker[] = [];
+  const { player } = video;
+  const videoStart = getVideoStartEpoch(video);
+
+  if (video.deaths === undefined || !videoStart || !player?._name) {
+    return videoMarkers;
+  }
+
+  video.deaths.forEach((death: PlayerDeathType) => {
+    if (death.killerName === player._name) {
+      videoMarkers.push({
+        time: toRelativeSeconds(death.timestamp, videoStart),
+        text: `Kill (${death.name})`,
+        color: MarkerColors.WIN,
+        duration: 5,
+      });
+    }
   });
 
   return videoMarkers;
@@ -702,6 +752,7 @@ export {
   convertDeathMarkersToNum,
   getAllDeathMarkers,
   getOwnDeathMarkers,
+  getKillMarkers,
   isHighRes,
   getPTTKeyPressEventFromConfig,
   getManualRecordHotKeyFromConfig,

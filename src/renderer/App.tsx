@@ -126,6 +126,7 @@ const XIVRecorder = () => {
   const videoCounters = useMemo<Record<VideoCategory, number>>(() => {
     const counts = {
       [VideoCategory.CrystallineConflict]: 0,
+      [VideoCategory.Raids]: 0,
       [VideoCategory.Manual]: 0,
       [VideoCategory.Clips]: 0,
     };

@@ -49,6 +49,12 @@ export const ActorControlType = {
   TEAM_RESULT: 0x40000007,
   /** Post-match. */
   POST_MATCH: 0x80000022,
+  /** Victory — boss killed (standard raids/trials). */
+  VICTORY: 0x40000003,
+  /** Fade out — wipe detected. */
+  FADE_OUT: 0x40000005,
+  /** Recommence — restart after wipe. */
+  RECOMMENCE: 0x40000006,
 } as const;
 
 /**

@@ -4,6 +4,7 @@
  */
 export enum VideoCategory {
   CrystallineConflict = 'Crystalline Conflict',
+  Raids = 'Raids',
   Manual = 'Manual',
   Clips = 'Clips',
 }

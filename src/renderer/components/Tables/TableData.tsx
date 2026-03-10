@@ -220,6 +220,7 @@ const useTable = (
 
   switch (category) {
     case VideoCategory.CrystallineConflict:
+    case VideoCategory.Raids:
       columns = ccColumns;
       break;
     case VideoCategory.Clips:

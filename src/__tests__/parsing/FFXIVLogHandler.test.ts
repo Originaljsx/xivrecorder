@@ -215,6 +215,48 @@ describe('FFXIVLogHandler', () => {
     });
   });
 
+  describe('match result detection', () => {
+    it('detects win when crystal is on enemy side (Astra player, crystal negative X)', () => {
+      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
+      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
+
+      // Player on Astra (positive X)
+      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
+      // Tactical Crystal
+      feed('03|2026-03-06T10:31:51.9220000-08:00|40000C79|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
+
+      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+
+      // Crystal pushed to negative X (Umbra side) = Astra wins
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|-80.0641|29.9839|4.0436|hash');
+
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(true); // Win
+    });
+
+    it('detects loss when crystal is on own side (Astra player, crystal positive X)', () => {
+      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
+      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
+
+      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
+      feed('03|2026-03-06T10:31:51.9220000-08:00|40000C79|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
+
+      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+
+      // Crystal pushed to positive X (Astra side) = Umbra wins
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|75.1234|29.9839|4.0436|hash');
+
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(false); // Loss
+    });
+  });
+
   describe('full CC match from real log data', () => {
     it('processes a complete CC match lifecycle', () => {
       // Simulate the real match from the user's log

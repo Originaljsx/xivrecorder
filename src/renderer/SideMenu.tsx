@@ -4,6 +4,7 @@ import {
   HardHat,
   MonitorCog,
   Play,
+  Shield,
   Square,
   Swords,
 } from 'lucide-react';
@@ -253,6 +254,7 @@ const SideMenu = (props: IProps) => {
             {getLocalePhrase(language, Phrase.RecordingsHeading)}
           </Menu.Label>
           {renderCategoryTab(VideoCategory.CrystallineConflict, <Swords />)}
+          {renderCategoryTab(VideoCategory.Raids, <Shield />)}
           {renderCategoryTab(VideoCategory.Manual, <HardHat />)}
           {renderCategoryTab(VideoCategory.Clips, <Clapperboard />)}
         </Menu>

@@ -34,10 +34,12 @@ import screenfull from 'screenfull';
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase } from 'localisation/translations';
 import DeathIcon from '../../assets/icon/death.png';
+import KillIcon from '../../assets/icon/swords.png';
 import { ExcalidrawElement } from '@excalidraw/excalidraw/dist/types/excalidraw/element/types';
 import {
   convertNumToDeathMarkers,
   getAllDeathMarkers,
+  getKillMarkers,
   getOwnDeathMarkers,
   isClip,
   secToMmSs,
@@ -244,6 +246,29 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   /**
+   * Return a kill marker appropriate for the MUI slider component.
+   */
+  const getKillMark = (marker: VideoMarker): SliderMark => {
+    return {
+      value: marker.time,
+      label: (
+        <Tooltip content={marker.text}>
+          <Box
+            component="img"
+            src={KillIcon}
+            sx={{
+              p: '1px',
+              height: '13px',
+              width: '13px',
+              objectFit: 'fill',
+            }}
+          />
+        </Tooltip>
+      ),
+    };
+  };
+
+  /**
    * Get the video timeline markers appropriate for the current video and
    * configuration.
    */
@@ -254,15 +279,36 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       return marks;
     }
 
+    // The video file includes pre-match buffer time (e.g. ~60s waiting
+    // period before gates open). Marker times from rendererutils are
+    // relative to match commence, so shift them by the buffer offset.
+    const metaDuration = videos[0].duration || duration;
+    const bufferOffset = duration - metaDuration;
+
+    const applyOffset = (marker: VideoMarker): VideoMarker => ({
+      ...marker,
+      time: marker.time + bufferOffset,
+    });
+
     const deathMarkerConfig = convertNumToDeathMarkers(config.deathMarkers);
 
     if (deathMarkerConfig === DeathMarkers.ALL) {
       getAllDeathMarkers(videos[0], language)
+        .map(applyOffset)
         .map(getDeathMark)
         .forEach((m) => marks.push(m));
     } else if (deathMarkerConfig === DeathMarkers.OWN) {
       getOwnDeathMarkers(videos[0], language)
+        .map(applyOffset)
         .map(getDeathMark)
+        .forEach((m) => marks.push(m));
+    }
+
+    // Always show kill markers when death markers are enabled.
+    if (deathMarkerConfig !== DeathMarkers.NONE) {
+      getKillMarkers(videos[0], language)
+        .map(applyOffset)
+        .map(getKillMark)
         .forEach((m) => marks.push(m));
     }
 
