@@ -10,6 +10,11 @@ It currently supports recording:
 
 This project is built on top of [Warcraft Recorder](https://github.com/aza547/wow-recorder) by [aza547](https://github.com/aza547), adapted for FFXIV with permission. The OBS-based recording engine and UI framework come from that project. Thank you to aza547 and all wow-recorder contributors for making this possible.
 
+## Important
+
+- **FFXIV does not have built-in combat logging.** XIV Recorder relies on a third-party parser (IINACT or ACT) to generate log files that it reads from. You must have one of these installed and running for XIV Recorder to work.
+- **XIV Recorder must be open before you enter the instance.** It needs to be running and watching for log events when you zone in, otherwise it will miss the zone change and duty commence events needed to start recording.
+
 ## How to Use
 
 ### 1. Download & Install
@@ -18,7 +23,7 @@ Download and run the most recent XIV Recorder installer from the [Releases](http
 
 ### 2. Set Up IINACT (Log Parser)
 
-XIV Recorder reads combat logs from IINACT to detect match starts, boss pulls, and other events. You need to install IINACT before using XIV Recorder.
+Since FFXIV has no native combat log, you need a third-party parser to generate log files for XIV Recorder to read. IINACT is the recommended option — it runs as a Dalamud plugin inside the game and writes network log files that XIV Recorder monitors for combat events.
 
 #### Get set up with Dalamud
 
