@@ -300,9 +300,9 @@ export default class FFXIVLogHandler extends EventEmitter {
           'seconds',
         );
         this.startCCMatch(line.timestamp);
-      } else {
-        // COMMENCE in a non-CC zone = duty instance (raid/trial).
-        console.info('[FFXIVLogHandler] Duty instance commenced');
+      } else if (this.isRaidZone()) {
+        // COMMENCE in a raid zone = duty instance for pull tracking.
+        console.info('[FFXIVLogHandler] Raid duty instance commenced:', this.currentZoneName);
         this.inDutyInstance = true;
         this.pullCount = 0;
         this.raidResult = undefined;
@@ -392,6 +392,17 @@ export default class FFXIVLogHandler extends EventEmitter {
     );
 
     return playerWon;
+  }
+
+  /**
+   * Check if the current zone is a recordable raid (Savage or Ultimate).
+   */
+  private isRaidZone(): boolean {
+    if (!this.currentZoneName) return false;
+    return (
+      this.currentZoneName.endsWith('(Savage)') ||
+      this.currentZoneName.endsWith('(Ultimate)')
+    );
   }
 
   /**
