@@ -399,7 +399,19 @@ export default class Manager {
 
     // Force stop button.
     ipcMain.on('forceStopRecording', async () => {
-      LogHandler.forceEndActivity();
+      if (LogHandler.isActivityInProgress()) {
+        LogHandler.forceEndActivity();
+      } else {
+        // No tracked activity but recording may still be running (orphaned).
+        // Force stop the recorder directly.
+        console.warn('[Manager] Force stop: no activity, stopping recorder directly');
+        try {
+          const recorder = Recorder.getInstance();
+          await recorder.stop();
+        } catch (error) {
+          console.error('[Manager] Force stop recorder error:', error);
+        }
+      }
     });
 
     // Get the next key pressed by the user.

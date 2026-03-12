@@ -116,10 +116,13 @@ export default class FFXIVLogHandler extends EventEmitter {
     // Type 33: ActorControl (NetworkActorControlExtra uses OverlayPlugin type 273)
     this.watcher.on('33', (line: ACTLogLine) => this.handleActorControl(line));
 
+    // Type 21: NetworkAbility (detects first combat action for raid pull start)
+    this.watcher.on('21', (line: ACTLogLine) => this.handleNetworkAbility(line));
+
     // Type 25: NetworkDeath
     this.watcher.on('25', (line: ACTLogLine) => this.handleNetworkDeath(line));
 
-    // Type 260: InCombat (tracks combat state for raid pulls)
+    // Type 260: InCombat (tracks combat state for raid pulls — IINACT only)
     this.watcher.on('260', (line: ACTLogLine) => this.handleInCombat(line));
 
     // Type 270: NpcPosition (tracks Tactical Crystal movement)
@@ -313,13 +316,53 @@ export default class FFXIVLogHandler extends EventEmitter {
     } else if (command === ActorControlType.VICTORY) {
       console.info('[FFXIVLogHandler] Victory detected (boss killed)');
       this.raidResult = true;
+      // End the pull immediately — works for both ACT and IINACT.
+      if (LogHandler.isActivityInProgress() && this.inDutyInstance) {
+        this.inGameCombat = false;
+        this.endRaidPull(new Date(), true);
+      }
     } else if (command === ActorControlType.FADE_OUT) {
       console.info('[FFXIVLogHandler] Fade out detected (wipe)');
       this.raidResult = false;
+      // End the pull immediately — works for both ACT and IINACT.
+      if (LogHandler.isActivityInProgress() && this.inDutyInstance) {
+        this.inGameCombat = false;
+        this.endRaidPull(new Date(), true);
+      }
     } else if (command === ActorControlType.RECOMMENCE) {
       console.info('[FFXIVLogHandler] Recommence (ready for next pull)');
       this.raidResult = undefined;
     }
+  }
+
+  /**
+   * Type 21: NetworkAbility
+   * Format: 21|timestamp|sourceId|sourceName|abilityId|abilityName|targetId|targetName|...
+   *
+   * In raid duty instances, the first ability used on an NPC target after
+   * COMMENCE signals the start of a pull. This works with both ACT and IINACT
+   * (ACT does not emit type 260 InCombat events).
+   */
+  private handleNetworkAbility(line: ACTLogLine) {
+    if (!this.inDutyInstance || this.inCCZone) return;
+    // Already in combat — no need to start again.
+    if (this.inGameCombat || LogHandler.isActivityInProgress()) return;
+
+    const sourceId = line.field(0);
+    const targetId = line.field(4);
+
+    // Only care about player attacking an NPC (boss).
+    if (!isPlayerEntity(sourceId)) return;
+    if (!targetId || isPlayerEntity(targetId)) return;
+
+    // First combat action on a boss — start the pull.
+    this.inGameCombat = true;
+    this.pullCount++;
+    console.info(
+      '[FFXIVLogHandler] First combat action detected, pull',
+      this.pullCount,
+    );
+    this.startRaidPull(line.timestamp);
   }
 
   /**
@@ -413,25 +456,30 @@ export default class FFXIVLogHandler extends EventEmitter {
    */
   private handleInCombat(line: ACTLogLine) {
     // Only care about duty instances, not CC zones.
+    // This event is IINACT-only — ACT does not emit type 260.
     if (!this.inDutyInstance || this.inCCZone) return;
 
     const inGameCombat = line.field(1) === '1';
 
     if (inGameCombat && !this.inGameCombat) {
-      // Combat started — begin a new pull.
+      // Combat started. If a pull was already started via NetworkAbility,
+      // just update the flag without starting a duplicate.
       this.inGameCombat = true;
-      this.pullCount++;
-      console.info(
-        '[FFXIVLogHandler] Combat started, pull',
-        this.pullCount,
-      );
-      this.startRaidPull(line.timestamp);
+      if (!LogHandler.isActivityInProgress()) {
+        this.pullCount++;
+        console.info(
+          '[FFXIVLogHandler] Combat started (InCombat), pull',
+          this.pullCount,
+        );
+        this.startRaidPull(line.timestamp);
+      }
     } else if (!inGameCombat && this.inGameCombat) {
-      // Combat ended — end the pull.
-      // Use Date.now() to stay consistent with startRaidPull (wall clock time).
+      // Combat ended. If FADE_OUT/VICTORY already ended the pull, skip.
       this.inGameCombat = false;
-      console.info('[FFXIVLogHandler] Combat ended');
-      this.endRaidPull(new Date(), true);
+      if (LogHandler.isActivityInProgress()) {
+        console.info('[FFXIVLogHandler] Combat ended (InCombat)');
+        this.endRaidPull(new Date(), true);
+      }
     }
   }
 
@@ -485,12 +533,12 @@ export default class FFXIVLogHandler extends EventEmitter {
 
     this.emit('activity-end', LogHandler.activity);
 
-    if (normal) {
-      await LogHandler.endActivity();
-    } else {
-      LogHandler.overrunning = false;
-      LogHandler.activity = undefined;
+    if (!normal) {
+      // Force end — skip overrun so the recording stops immediately.
+      LogHandler.activity.overrun = 0;
     }
+
+    await LogHandler.endActivity();
 
     // Reset result for next pull.
     this.raidResult = undefined;
@@ -564,14 +612,12 @@ export default class FFXIVLogHandler extends EventEmitter {
 
     this.emit('activity-end', LogHandler.activity);
 
-    if (normal) {
-      await LogHandler.endActivity();
-    } else {
-      // Force end — activity already has endDate set, just clear state.
-      LogHandler.overrunning = false;
-      LogHandler.activity = undefined;
+    if (!normal) {
+      // Force end — skip overrun so the recording stops immediately.
+      LogHandler.activity.overrun = 0;
     }
 
+    await LogHandler.endActivity();
     this.matchStarted = false;
   }
 

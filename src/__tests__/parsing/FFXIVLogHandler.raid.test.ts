@@ -404,4 +404,156 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
       );
     });
   });
+
+  describe('ACT compatibility (no InCombat events)', () => {
+    it('starts pull on first NetworkAbility against NPC', () => {
+      enterDutyInstance();
+
+      // Player attacks boss (type 21: sourceId=player, targetId=NPC)
+      feed(
+        '21|2026-03-12T12:53:50.7130000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+
+      expect(LogHandler.activity).toBeDefined();
+      expect(LogHandler.activity).toBeInstanceOf(RaidEncounter);
+      expect((LogHandler.activity as RaidEncounter).pullNumber).toBe(1);
+    });
+
+    it('ends pull on FADE_OUT without InCombat', () => {
+      enterDutyInstance();
+
+      // Pull start via ability
+      feed(
+        '21|2026-03-12T12:53:50.7130000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+
+      // FADE_OUT ends the pull directly
+      feed(
+        '33|2026-03-12T12:53:56.0540000-07:00|800375A0|40000005|00|00|00|00|hash',
+      );
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(false); // Wipe
+    });
+
+    it('ends pull on VICTORY without InCombat', () => {
+      enterDutyInstance();
+
+      feed(
+        '21|2026-03-12T12:53:50.7130000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+
+      feed(
+        '33|2026-03-12T12:53:56.0540000-07:00|800375A0|40000003|00|00|00|00|hash',
+      );
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(true); // Kill
+    });
+
+    it('supports multiple pulls via ACT flow', () => {
+      enterDutyInstance();
+
+      // Pull 1: ability → FADE_OUT
+      feed(
+        '21|2026-03-12T12:53:50.0000000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+      feed(
+        '33|2026-03-12T12:53:56.0000000-07:00|800375A0|40000005|00|00|00|00|hash',
+      );
+
+      // RECOMMENCE
+      feed(
+        '33|2026-03-12T12:54:06.0000000-07:00|800375A0|40000006|1512|14|00|00|hash',
+      );
+
+      // Pull 2: ability → VICTORY
+      feed(
+        '21|2026-03-12T12:54:26.0000000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+      feed(
+        '33|2026-03-12T12:54:56.0000000-07:00|800375A0|40000003|00|00|00|00|hash',
+      );
+
+      const endEvents = events.filter((e) => e.name === 'activity-end');
+      expect(endEvents.length).toBe(2);
+      expect(endEvents[0].data.result).toBe(false); // Pull 1: wipe
+      expect(endEvents[1].data.result).toBe(true); // Pull 2: kill
+    });
+
+    it('ignores NPC-on-NPC abilities', () => {
+      enterDutyInstance();
+
+      // NPC attacks NPC — should not start a pull
+      feed(
+        '21|2026-03-12T12:53:50.0000000-07:00|4000147A|Erichthonios|368|attack|4000147B|Erichthonios|0|hash',
+      );
+
+      expect(LogHandler.activity).toBeUndefined();
+    });
+
+    it('ignores player-on-player abilities', () => {
+      enterDutyInstance();
+
+      // Player attacks player — should not start a pull
+      feed(
+        '21|2026-03-12T12:53:50.0000000-07:00|106950F6|Original Dsi|5EE2|Eukrasia|106950F6|Original Dsi|3E|hash',
+      );
+
+      expect(LogHandler.activity).toBeUndefined();
+    });
+
+    it('full ACT log sequence from real data', () => {
+      // From ACT log: Network_30101_20260312.log
+      feed(
+        '02|2026-03-12T12:52:49.1390000-07:00|106950F6|Original Dsi|0cfc82971cdf3b30',
+      );
+      feed(
+        '01|2026-03-12T12:52:49.1390000-07:00|FA|Wolves\' Den Pier|9a86893a70e7764d',
+      );
+
+      // Zone to Asphodelos (Savage)
+      feed(
+        '01|2026-03-12T12:53:27.3080000-07:00|3EB|Asphodelos: The First Circle (Savage)|a0c41fa62504a07a',
+      );
+      feed(
+        '02|2026-03-12T12:53:27.3080000-07:00|106950F6|Original Dsi|8455b94bd09d69bb',
+      );
+      feed(
+        '01|2026-03-12T12:53:46.9330000-07:00|3EB|Asphodelos: The First Circle (Savage)|aa45bf0af1e2373d',
+      );
+
+      // COMMENCE
+      feed(
+        '33|2026-03-12T12:53:49.8670000-07:00|800375A0|40000001|1518|00|00|00|717043cb95fda05e',
+      );
+
+      // First ability on boss — pull starts
+      feed(
+        '21|2026-03-12T12:53:50.7130000-07:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+
+      expect(LogHandler.activity).toBeDefined();
+      expect(LogHandler.activity).toBeInstanceOf(RaidEncounter);
+      const encounter = LogHandler.activity as RaidEncounter;
+      expect(encounter.zoneName).toBe('Asphodelos: The First Circle (Savage)');
+      expect(encounter.pullNumber).toBe(1);
+
+      // FADE_OUT — wipe
+      feed(
+        '33|2026-03-12T12:53:56.0540000-07:00|800375A0|40000005|00|00|00|00|8c4e1ae88a4c7e92',
+      );
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(false);
+
+      const metadata = endEvent!.data.getMetadata();
+      expect(metadata.category).toBe('Raids');
+      expect(metadata.zoneName).toBe('Asphodelos: The First Circle (Savage)');
+      expect(metadata.tag).toBe('Pull 1');
+    });
+  });
 });
