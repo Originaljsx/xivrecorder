@@ -155,6 +155,8 @@ describe('FFXIVLogHandler', () => {
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      // MATCH_END defers via setTimeout(0) to wait for TEAM_RESULT
+      jest.runAllTimers();
 
       expect(events.some((e) => e.name === 'activity-end')).toBe(true);
     });
@@ -216,7 +218,45 @@ describe('FFXIVLogHandler', () => {
   });
 
   describe('match result detection', () => {
-    it('detects win when crystal is on enemy side (Astra player, crystal negative X)', () => {
+    it('detects win via TEAM_RESULT (Astra player, team 0 wins)', () => {
+      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
+      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
+
+      // Player on Astra (positive X)
+      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
+
+      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+
+      // MATCH_END followed by TEAM_RESULT (winning team = 0 = Astra)
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(true); // Win
+    });
+
+    it('detects loss via TEAM_RESULT (Astra player, team 1 wins)', () => {
+      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
+      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
+
+      // Player on Astra (positive X)
+      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
+
+      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+
+      // MATCH_END followed by TEAM_RESULT (winning team = 1 = Umbra)
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent).toBeDefined();
+      expect(endEvent!.data.result).toBe(false); // Loss
+    });
+
+    it('falls back to crystal position when TEAM_RESULT not available (win)', () => {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
 
@@ -230,14 +270,16 @@ describe('FFXIVLogHandler', () => {
       // Crystal pushed to negative X (Umbra side) = Astra wins
       feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|-80.0641|29.9839|4.0436|hash');
 
+      // MATCH_END without TEAM_RESULT — needs timer flush
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      jest.runAllTimers();
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(true); // Win
+      expect(endEvent!.data.result).toBe(true); // Win via crystal fallback
     });
 
-    it('detects loss when crystal is on own side (Astra player, crystal positive X)', () => {
+    it('falls back to crystal position when TEAM_RESULT not available (loss)', () => {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
 
@@ -249,11 +291,13 @@ describe('FFXIVLogHandler', () => {
       // Crystal pushed to positive X (Astra side) = Umbra wins
       feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|75.1234|29.9839|4.0436|hash');
 
+      // MATCH_END without TEAM_RESULT — needs timer flush
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      jest.runAllTimers();
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(false); // Loss
+      expect(endEvent!.data.result).toBe(false); // Loss via crystal fallback
     });
   });
 
@@ -304,8 +348,14 @@ describe('FFXIVLogHandler', () => {
       expect(astraPlayers.length).toBe(5);
       expect(umbraPlayers.length).toBe(5);
 
-      // Match end
+      // Crystal position tracking
+      feed('03|2026-03-06T10:31:51.9220000-08:00|40000724|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000724|-1.5709|0000|001E|-80.0641|29.9839|4.0436|hash');
+
+      // Match end + TEAM_RESULT (Astra = team 0 wins)
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
@@ -314,6 +364,7 @@ describe('FFXIVLogHandler', () => {
       const activity = endEvent!.data;
       expect(activity.getMetadata().zoneName).toBe('Cloud Nine');
       expect(activity.getMetadata().combatants.length).toBe(10);
+      expect(activity.getMetadata().result).toBe(true); // Astra player won
     });
   });
 });

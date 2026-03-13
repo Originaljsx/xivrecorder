@@ -75,6 +75,12 @@ export default class FFXIVLogHandler extends EventEmitter {
   /** Countdown duration in seconds from the most recent /countdown command. */
   private countdownSeconds: number | undefined;
 
+  /** Winning team index from TEAM_RESULT ActorControl (0 or 1). */
+  private ccWinningTeamIndex: number | undefined;
+
+  /** Deferred match end timer (allows TEAM_RESULT to arrive after MATCH_END). */
+  private matchEndTimer: ReturnType<typeof setTimeout> | undefined;
+
   constructor(logDir: string) {
     super();
     this.watcher = new IINACTLogWatcher(logDir, 30);
@@ -318,7 +324,31 @@ export default class FFXIVLogHandler extends EventEmitter {
       }
     } else if (command === ActorControlType.MATCH_END) {
       console.info('[FFXIVLogHandler] CC match ended');
-      this.endCCMatch(line.timestamp, true);
+      // Defer match end slightly to allow TEAM_RESULT events to arrive
+      // (they appear on the next lines, same timestamp, same processing chunk).
+      const matchEndTimestamp = line.timestamp;
+      this.matchEndTimer = setTimeout(() => {
+        this.matchEndTimer = undefined;
+        this.endCCMatch(matchEndTimestamp, true);
+      }, 0);
+    } else if (command === ActorControlType.TEAM_RESULT) {
+      // TEAM_RESULT fires twice after MATCH_END (once per team).
+      // The first event's data0 is the winning team index (0 or 1).
+      const teamIndex = line.fieldHex(2);
+      if (this.ccWinningTeamIndex === undefined) {
+        this.ccWinningTeamIndex = teamIndex;
+        console.info(
+          '[FFXIVLogHandler] TEAM_RESULT: winning team index =',
+          teamIndex,
+        );
+      }
+
+      // If the deferred match end is pending, fire it now.
+      if (this.matchEndTimer) {
+        clearTimeout(this.matchEndTimer);
+        this.matchEndTimer = undefined;
+        this.endCCMatch(line.timestamp, true);
+      }
     } else if (command === ActorControlType.VICTORY) {
       console.info('[FFXIVLogHandler] Victory detected (boss killed)');
       this.raidResult = true;
@@ -440,37 +470,66 @@ export default class FFXIVLogHandler extends EventEmitter {
   }
 
   /**
-   * Determine CC match result from crystal position and player team.
-   * Crystal pushed to negative X = Astra wins, positive X = Umbra wins.
+   * Determine CC match result.
+   *
+   * Primary: TEAM_RESULT ActorControl event (data0 = winning team index).
+   *   Astra (positive X spawn) = team index 0, Umbra = team index 1.
+   *
+   * Fallback: crystal position tracking via type 270 NpcPosition events.
+   *   Crystal pushed to negative X = Astra wins, positive X = Umbra wins.
+   *
    * Returns true if the player's team won.
    */
   private determineCCResult(): boolean {
-    if (this.crystalLastX === undefined || !this.playerEntityId) {
-      console.warn('[FFXIVLogHandler] Cannot determine result: missing crystal position or player');
-      return false;
-    }
-
-    const player = LogHandler.activity?.getCombatant(this.playerEntityId);
+    const player = LogHandler.activity?.getCombatant(this.playerEntityId ?? '');
     if (!player?.teamId) {
-      console.warn('[FFXIVLogHandler] Cannot determine result: player team unknown');
+      console.warn(
+        '[FFXIVLogHandler] Cannot determine result: player team unknown.',
+        `playerEntityId=${this.playerEntityId}`,
+        `combatantMapSize=${LogHandler.activity?.combatantMap?.size}`,
+      );
       return false;
     }
 
-    // Crystal at negative X = pushed toward Umbra side = Astra (team 1) wins
-    // Crystal at positive X = pushed toward Astra side = Umbra (team 2) wins
-    const astraWon = this.crystalLastX < 0;
+    // Player team: teamId 1 = Astra (positive X), teamId 2 = Umbra (negative X)
     const playerIsAstra = player.teamId === 1;
-    const playerWon = astraWon === playerIsAstra;
 
-    console.info(
-      '[FFXIVLogHandler] Match result:',
-      `crystal X=${this.crystalLastX.toFixed(2)}`,
-      `${astraWon ? 'Astra' : 'Umbra'} wins,`,
-      `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
-      `result=${playerWon ? 'WIN' : 'LOSS'}`,
+    // Method 1: TEAM_RESULT (most reliable — always available from IINACT and ACT)
+    if (this.ccWinningTeamIndex !== undefined) {
+      // Astra = internal team index 0, Umbra = internal team index 1
+      const astraWon = this.ccWinningTeamIndex === 0;
+      const playerWon = astraWon === playerIsAstra;
+
+      console.info(
+        '[FFXIVLogHandler] Match result (TEAM_RESULT):',
+        `winningTeamIndex=${this.ccWinningTeamIndex},`,
+        `${astraWon ? 'Astra' : 'Umbra'} wins,`,
+        `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
+        `result=${playerWon ? 'WIN' : 'LOSS'}`,
+      );
+      return playerWon;
+    }
+
+    // Method 2: Crystal position fallback
+    if (this.crystalLastX !== undefined) {
+      const astraWon = this.crystalLastX < 0;
+      const playerWon = astraWon === playerIsAstra;
+
+      console.info(
+        '[FFXIVLogHandler] Match result (crystal position):',
+        `crystal X=${this.crystalLastX.toFixed(2)},`,
+        `${astraWon ? 'Astra' : 'Umbra'} wins,`,
+        `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
+        `result=${playerWon ? 'WIN' : 'LOSS'}`,
+      );
+      return playerWon;
+    }
+
+    console.warn(
+      '[FFXIVLogHandler] Cannot determine result: no TEAM_RESULT and no crystal position.',
+      `playerIsAstra=${playerIsAstra}`,
     );
-
-    return playerWon;
+    return false;
   }
 
   /**
@@ -682,6 +741,11 @@ export default class FFXIVLogHandler extends EventEmitter {
     this._pendingCombatants = undefined;
     this.crystalEntityId = undefined;
     this.crystalLastX = undefined;
+    this.ccWinningTeamIndex = undefined;
+    if (this.matchEndTimer) {
+      clearTimeout(this.matchEndTimer);
+      this.matchEndTimer = undefined;
+    }
     this.resetRaidState();
   }
 
