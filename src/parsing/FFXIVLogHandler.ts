@@ -459,6 +459,13 @@ export default class FFXIVLogHandler extends EventEmitter {
     // This event is IINACT-only — ACT does not emit type 260.
     if (!this.inDutyInstance || this.inCCZone) return;
 
+    // InCombat has two independent flags: inACTCombat and inGameCombat.
+    // They toggle at different times, producing intermediate states like
+    // (ACT=1, game=0). We only care about actual game combat transitions
+    // to avoid false pull starts/stops.
+    const isGameChanged = line.field(3) === '1';
+    if (!isGameChanged) return;
+
     const inGameCombat = line.field(1) === '1';
 
     if (inGameCombat && !this.inGameCombat) {

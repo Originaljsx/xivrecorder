@@ -405,6 +405,48 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
     });
   });
 
+  describe('InCombat isGameChanged filter', () => {
+    it('ignores InCombat events where only ACT combat changed', () => {
+      enterDutyInstance();
+
+      // NetworkAbility starts pull (player → NPC boss)
+      feed(
+        '21|2026-03-12T18:20:38.6310000-05:00|106B41F1|Yurii Himura|906F|Heartbreak Shot|400091E4|Red Hot|724003|hash',
+      );
+
+      expect(LogHandler.activity).toBeDefined();
+
+      // InCombat: ACT combat changed (isACTChanged=1), but game combat
+      // did NOT change (isGameChanged=0). inGameCombat=0 here is the
+      // intermediate state — should NOT end the pull.
+      feed('260|2026-03-12T18:20:38.3720000-05:00|1|0|1|0|hash');
+
+      // Pull should still be active — not ended by the intermediate state
+      expect(LogHandler.activity).toBeDefined();
+    });
+
+    it('correctly ends pull when game combat actually changes to 0', () => {
+      enterDutyInstance();
+
+      // Start pull via ability
+      feed(
+        '21|2026-03-12T18:20:38.6310000-05:00|106B41F1|Yurii Himura|906F|Heartbreak Shot|400091E4|Red Hot|724003|hash',
+      );
+
+      // Intermediate InCombat (ACT changed, game didn't) — should be ignored
+      feed('260|2026-03-12T18:20:38.3720000-05:00|1|0|1|0|hash');
+      expect(LogHandler.activity).toBeDefined();
+
+      // Game combat turns ON (isGameChanged=1) — should NOT end pull
+      feed('260|2026-03-12T18:20:39.6780000-05:00|1|1|0|1|hash');
+      expect(LogHandler.activity).toBeDefined();
+
+      // Game combat turns OFF (isGameChanged=1) — should end pull
+      feed('260|2026-03-12T18:20:59.7090000-05:00|1|0|0|1|hash');
+      expect(events.some((e) => e.name === 'activity-end')).toBe(true);
+    });
+  });
+
   describe('ACT compatibility (no InCombat events)', () => {
     it('starts pull on first NetworkAbility against NPC', () => {
       enterDutyInstance();
