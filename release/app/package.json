@@ -16,5 +16,5 @@
     "noobs": "^0.0.184",
     "uiohook-napi": "^1.5.2"
   },
-  "license": "MIT"
+  "license": "GPL-2.0"
 }
