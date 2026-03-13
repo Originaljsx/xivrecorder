@@ -32,10 +32,11 @@ const FFXIVSettings = (props: IProps) => {
     setConfigValues({
       iinactLogPath: config.iinactLogPath,
       recordCrystallineConflict: config.recordCrystallineConflict,
+      recordRaids: config.recordRaids,
     });
 
     ipc.reconfigureBase();
-  }, [config.iinactLogPath, config.recordCrystallineConflict]);
+  }, [config.iinactLogPath, config.recordCrystallineConflict, config.recordRaids]);
 
   const setIINACTLogPath = async () => {
     const newPath = await pathSelect();
@@ -54,6 +55,13 @@ const FFXIVSettings = (props: IProps) => {
     setConfig((prev) => ({
       ...prev,
       recordCrystallineConflict: checked,
+    }));
+  };
+
+  const setRecordRaids = (checked: boolean) => {
+    setConfig((prev) => ({
+      ...prev,
+      recordRaids: checked,
     }));
   };
 
@@ -89,28 +97,55 @@ const FFXIVSettings = (props: IProps) => {
         )}
       </div>
 
-      <div className="flex flex-col w-[200px]">
-        <Label
-          htmlFor="recordCrystallineConflict"
-          className="flex items-center"
-        >
-          {getLocalePhrase(appState.language, Phrase.RecordRetailLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              Phrase.RecordRetailDescription,
-            )}
-            side="right"
+      <div className="flex gap-x-8">
+        <div className="flex flex-col w-[200px]">
+          <Label
+            htmlFor="recordCrystallineConflict"
+            className="flex items-center"
           >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={Boolean(config.recordCrystallineConflict)}
-            name="recordCrystallineConflict"
-            onCheckedChange={setRecordCC}
-          />
+            {getLocalePhrase(appState.language, Phrase.RecordRetailLabel)}
+            <Tooltip
+              content={getLocalePhrase(
+                appState.language,
+                Phrase.RecordRetailDescription,
+              )}
+              side="right"
+            >
+              <Info size={20} className="inline-flex ml-2" />
+            </Tooltip>
+          </Label>
+          <div className="flex h-10 items-center">
+            <Switch
+              checked={Boolean(config.recordCrystallineConflict)}
+              name="recordCrystallineConflict"
+              onCheckedChange={setRecordCC}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col w-[200px]">
+          <Label
+            htmlFor="recordRaids"
+            className="flex items-center"
+          >
+            {getLocalePhrase(appState.language, Phrase.RecordRaidsLabel)}
+            <Tooltip
+              content={getLocalePhrase(
+                appState.language,
+                Phrase.RecordRaidsDescription,
+              )}
+              side="right"
+            >
+              <Info size={20} className="inline-flex ml-2" />
+            </Tooltip>
+          </Label>
+          <div className="flex h-10 items-center">
+            <Switch
+              checked={Boolean(config.recordRaids)}
+              name="recordRaids"
+              onCheckedChange={setRecordRaids}
+            />
+          </div>
         </div>
       </div>
     </div>

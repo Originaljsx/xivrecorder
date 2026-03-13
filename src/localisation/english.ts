@@ -32,7 +32,7 @@ const ENGLISH: Translations = {
   [Phrase.RecordClassicDescription]: 'Unused.',
   [Phrase.RecordClassicPtrDescription]: 'Unused.',
   [Phrase.RecordEraDescription]: 'Unused.',
-  [Phrase.RecordRaidsDescription]: 'Unused.',
+  [Phrase.RecordRaidsDescription]: 'Whether to automatically record Savage and Ultimate raid encounter pulls.',
   [Phrase.RecordDungeonsDescription]: 'Unused.',
   [Phrase.RecordTwoVTwoDescription]: 'Unused.',
   [Phrase.RecordThreeVThreeDescription]: 'Unused.',

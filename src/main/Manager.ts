@@ -49,6 +49,12 @@ export default class Manager {
   private logHandler: FFXIVLogHandler | undefined;
 
   /**
+   * The log path the current log handler was created with, so we can
+   * avoid recreating it unnecessarily during reconfiguration.
+   */
+  private logHandlerPath: string | undefined;
+
+  /**
    * If the config is valid or not.
    */
   private configValid = false;
@@ -290,14 +296,28 @@ export default class Manager {
     LogHandler.overrunning = false;
     LogHandler.setStateChangeCallback(() => this.refreshStatus());
 
-    if (!startup && this.logHandler) {
-      console.info('[Manager] Not startup, so reset log handler');
+    const wantLogHandler = config.recordCrystallineConflict || config.recordRaids;
+    const logPathChanged = this.logHandlerPath !== config.iinactLogPath;
+
+    // Only recreate the log handler if the log path changed, recording
+    // toggles changed, or this is the initial startup. This avoids
+    // resetting raid/CC state when unrelated settings (e.g. encoder) change.
+    const needsRecreate = startup || !this.logHandler || logPathChanged;
+
+    if (!wantLogHandler && this.logHandler) {
+      console.info('[Manager] Disabling log handler (recording disabled)');
       this.logHandler.destroy();
       this.logHandler = undefined;
-    }
+      this.logHandlerPath = undefined;
+    } else if (wantLogHandler && needsRecreate) {
+      if (!startup && this.logHandler) {
+        console.info('[Manager] Recreating log handler (log path changed)');
+        this.logHandler.destroy();
+        this.logHandler = undefined;
+      }
 
-    if (config.recordCrystallineConflict) {
       this.logHandler = new FFXIVLogHandler(config.iinactLogPath);
+      this.logHandlerPath = config.iinactLogPath;
 
       // Wire up buffer start event from log handler.
       this.logHandler.on('start-buffer', async () => {
@@ -316,6 +336,8 @@ export default class Manager {
       });
 
       await this.logHandler.start();
+    } else if (wantLogHandler && this.logHandler) {
+      console.info('[Manager] Keeping existing log handler (no log config change)');
     }
   }
 
