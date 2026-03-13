@@ -473,10 +473,13 @@ export default class FFXIVLogHandler extends EventEmitter {
    * Determine CC match result.
    *
    * Primary: TEAM_RESULT ActorControl event (data0 = winning team index).
-   *   Astra (positive X spawn) = team index 0, Umbra = team index 1.
+   *   Astra (positive X spawn) = internal team index 1.
+   *   Umbra (negative X spawn) = internal team index 0.
    *
    * Fallback: crystal position tracking via type 270 NpcPosition events.
-   *   Crystal pushed to negative X = Astra wins, positive X = Umbra wins.
+   *   Crystal at positive X = Astra (positive X team) wins.
+   *   Crystal at negative X = Umbra (negative X team) wins.
+   *   (The crystal advances toward the controlling team's side.)
    *
    * Returns true if the player's team won.
    */
@@ -494,10 +497,10 @@ export default class FFXIVLogHandler extends EventEmitter {
     // Player team: teamId 1 = Astra (positive X), teamId 2 = Umbra (negative X)
     const playerIsAstra = player.teamId === 1;
 
-    // Method 1: TEAM_RESULT (most reliable — always available from IINACT and ACT)
+    // Method 1: TEAM_RESULT (available in ranked/casual, not custom matches)
     if (this.ccWinningTeamIndex !== undefined) {
-      // Astra = internal team index 0, Umbra = internal team index 1
-      const astraWon = this.ccWinningTeamIndex === 0;
+      // Astra = internal team index 1, Umbra = internal team index 0
+      const astraWon = this.ccWinningTeamIndex === 1;
       const playerWon = astraWon === playerIsAstra;
 
       console.info(
@@ -510,9 +513,12 @@ export default class FFXIVLogHandler extends EventEmitter {
       return playerWon;
     }
 
-    // Method 2: Crystal position fallback
+    // Method 2: Crystal position fallback (works for all match types)
     if (this.crystalLastX !== undefined) {
-      const astraWon = this.crystalLastX < 0;
+      // Crystal advances toward the controlling team's side:
+      //   positive X = Astra side = Astra winning
+      //   negative X = Umbra side = Umbra winning
+      const astraWon = this.crystalLastX > 0;
       const playerWon = astraWon === playerIsAstra;
 
       console.info(

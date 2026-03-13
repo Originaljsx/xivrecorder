@@ -218,7 +218,7 @@ describe('FFXIVLogHandler', () => {
   });
 
   describe('match result detection', () => {
-    it('detects win via TEAM_RESULT (Astra player, team 0 wins)', () => {
+    it('detects win via TEAM_RESULT (Astra player, team 1 wins)', () => {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
 
@@ -227,17 +227,17 @@ describe('FFXIVLogHandler', () => {
 
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
 
-      // MATCH_END followed by TEAM_RESULT (winning team = 0 = Astra)
+      // MATCH_END followed by TEAM_RESULT (winning team = 1 = Astra)
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
       expect(endEvent!.data.result).toBe(true); // Win
     });
 
-    it('detects loss via TEAM_RESULT (Astra player, team 1 wins)', () => {
+    it('detects loss via TEAM_RESULT (Astra player, team 0 wins)', () => {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
 
@@ -246,10 +246,10 @@ describe('FFXIVLogHandler', () => {
 
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
 
-      // MATCH_END followed by TEAM_RESULT (winning team = 1 = Umbra)
+      // MATCH_END followed by TEAM_RESULT (winning team = 0 = Umbra)
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
@@ -267,8 +267,8 @@ describe('FFXIVLogHandler', () => {
 
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
 
-      // Crystal pushed to negative X (Umbra side) = Astra wins
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|-80.0641|29.9839|4.0436|hash');
+      // Crystal at positive X (Astra side) = Astra winning
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|80.0641|29.9839|4.0436|hash');
 
       // MATCH_END without TEAM_RESULT — needs timer flush
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
@@ -288,8 +288,8 @@ describe('FFXIVLogHandler', () => {
 
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
 
-      // Crystal pushed to positive X (Astra side) = Umbra wins
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|75.1234|29.9839|4.0436|hash');
+      // Crystal at negative X (Umbra side) = Umbra winning
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|-75.1234|29.9839|4.0436|hash');
 
       // MATCH_END without TEAM_RESULT — needs timer flush
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
@@ -348,14 +348,14 @@ describe('FFXIVLogHandler', () => {
       expect(astraPlayers.length).toBe(5);
       expect(umbraPlayers.length).toBe(5);
 
-      // Crystal position tracking
+      // Crystal position tracking (crystal at positive X = Astra winning)
       feed('03|2026-03-06T10:31:51.9220000-08:00|40000724|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000724|-1.5709|0000|001E|-80.0641|29.9839|4.0436|hash');
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000724|-1.5709|0000|001E|80.0641|29.9839|4.0436|hash');
 
-      // Match end + TEAM_RESULT (Astra = team 0 wins)
+      // Match end + TEAM_RESULT (Astra = team 1 wins)
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
