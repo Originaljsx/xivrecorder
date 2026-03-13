@@ -598,4 +598,114 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
       expect(metadata.tag).toBe('Pull 1');
     });
   });
+
+  describe('countdown-based pre-pull buffer', () => {
+    it('uses countdown duration as buffer when countdown is present', () => {
+      enterDutyInstance();
+
+      // Countdown: 22 seconds
+      feed(
+        '00|2026-03-12T18:20:17.0000000-05:00|0139||Battle commencing in 22 seconds! (Qata MewrilahJenova)|hash',
+      );
+
+      // Pull starts via InCombat
+      feed('260|2026-03-12T18:20:39.0000000-05:00|1|1|0|1|hash');
+
+      const encounter = LogHandler.activity as RaidEncounter;
+      expect(encounter).toBeDefined();
+      expect(encounter.bufferSeconds).toBe(22);
+    });
+
+    it('uses default 5s buffer when no countdown is present', () => {
+      enterDutyInstance();
+
+      // No countdown — pull starts directly
+      feed('260|2026-03-12T18:20:39.0000000-05:00|1|1|0|1|hash');
+
+      const encounter = LogHandler.activity as RaidEncounter;
+      expect(encounter).toBeDefined();
+      expect(encounter.bufferSeconds).toBe(5);
+    });
+
+    it('countdown is consumed after pull — next pull without countdown gets 5s', () => {
+      enterDutyInstance();
+
+      // Pull 1 with countdown
+      feed(
+        '00|2026-03-12T18:20:17.0000000-05:00|0139||Battle commencing in 16 seconds! (Qata MewrilahJenova)|hash',
+      );
+      feed('260|2026-03-12T18:20:39.0000000-05:00|1|1|0|1|hash');
+      expect((LogHandler.activity as RaidEncounter).bufferSeconds).toBe(16);
+
+      // End pull 1
+      feed('260|2026-03-12T18:21:00.0000000-05:00|1|0|0|1|hash');
+
+      // Pull 2 without countdown
+      feed('260|2026-03-12T18:22:00.0000000-05:00|1|1|0|1|hash');
+      expect((LogHandler.activity as RaidEncounter).bufferSeconds).toBe(5);
+    });
+
+    it('ignores countdown messages outside duty instance', () => {
+      // Set up player + zone but NO COMMENCE
+      feed(
+        '02|2026-03-10T20:34:34.2140000+00:00|107C5CF7|Crow Xo|hash',
+      );
+      feed(
+        '01|2026-03-10T20:34:48.2780000+00:00|2B7|Deltascape V1.0 (Savage)|hash',
+      );
+
+      // Countdown before COMMENCE — should be ignored
+      feed(
+        '00|2026-03-10T20:34:50.0000000+00:00|0139||Battle commencing in 15 seconds! (Crow XoServer)|hash',
+      );
+
+      // Now COMMENCE
+      feed(
+        '33|2026-03-10T20:34:59.7240000+00:00|80037565|40000001|1518|00|00|00|hash',
+      );
+
+      // Pull starts — should use default 5s since countdown was before duty instance
+      feed('260|2026-03-10T20:35:01.0000000+00:00|1|1|0|1|hash');
+      expect((LogHandler.activity as RaidEncounter).bufferSeconds).toBe(5);
+    });
+
+    it('uses first countdown value when multiple countdowns fire', () => {
+      enterDutyInstance();
+
+      // First countdown message (full duration)
+      feed(
+        '00|2026-03-12T18:20:17.0000000-05:00|0139||Battle commencing in 22 seconds! (Qata MewrilahJenova)|hash',
+      );
+      // Follow-up messages
+      feed(
+        '00|2026-03-12T18:20:29.0000000-05:00|0039||Battle commencing in 10 seconds!|hash',
+      );
+      feed(
+        '00|2026-03-12T18:20:34.0000000-05:00|0039||Battle commencing in 5 seconds!|hash',
+      );
+
+      feed('260|2026-03-12T18:20:39.0000000-05:00|1|1|0|1|hash');
+
+      const encounter = LogHandler.activity as RaidEncounter;
+      expect(encounter.bufferSeconds).toBe(22);
+    });
+
+    it('works with NetworkAbility pull start (ACT compatibility)', () => {
+      enterDutyInstance();
+
+      // Countdown
+      feed(
+        '00|2026-03-12T18:20:17.0000000-05:00|0139||Battle commencing in 18 seconds! (SomePlayer)|hash',
+      );
+
+      // Pull starts via ability (no InCombat — ACT flow)
+      feed(
+        '21|2026-03-12T18:20:35.0000000-05:00|106950F6|Original Dsi|5EFA|Eukrasian Dosis III|4000147A|Erichthonios|326A0E|hash',
+      );
+
+      const encounter = LogHandler.activity as RaidEncounter;
+      expect(encounter).toBeDefined();
+      expect(encounter.bufferSeconds).toBe(18);
+    });
+  });
 });

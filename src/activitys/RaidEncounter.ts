@@ -16,6 +16,7 @@ export default class RaidEncounter extends Activity {
     zoneId: number,
     zoneName: string,
     pullNumber: number,
+    bufferSeconds = 5,
   ) {
     super(startDate, VideoCategory.Raids);
     this._zoneID = zoneId;
@@ -23,8 +24,8 @@ export default class RaidEncounter extends Activity {
     this._pullNumber = pullNumber;
     // 2-second overrun to capture the moment of kill/wipe.
     this._overrun = 2;
-    // 5-second pre-pull buffer for positioning/countdown context.
-    this._bufferSeconds = 5;
+    // Pre-pull buffer: use countdown duration if available, else default 5s.
+    this._bufferSeconds = bufferSeconds;
   }
 
   get zoneName(): string {

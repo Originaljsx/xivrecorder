@@ -72,6 +72,9 @@ export default class FFXIVLogHandler extends EventEmitter {
   /** Raid pull result, set by VICTORY/FADE_OUT before InCombat drops. */
   private raidResult: boolean | undefined;
 
+  /** Countdown duration in seconds from the most recent /countdown command. */
+  private countdownSeconds: number | undefined;
+
   constructor(logDir: string) {
     super();
     this.watcher = new IINACTLogWatcher(logDir, 30);
@@ -124,6 +127,9 @@ export default class FFXIVLogHandler extends EventEmitter {
 
     // Type 260: InCombat (tracks combat state for raid pulls — IINACT only)
     this.watcher.on('260', (line: ACTLogLine) => this.handleInCombat(line));
+
+    // Type 00: ChatMessage (detects countdown for dynamic pre-pull buffer)
+    this.watcher.on('0', (line: ACTLogLine) => this.handleChatMessage(line));
 
     // Type 270: NpcPosition (tracks Tactical Crystal movement)
     this.watcher.on('270', (line: ACTLogLine) => this.handleNpcPosition(line));
@@ -404,6 +410,36 @@ export default class FFXIVLogHandler extends EventEmitter {
   }
 
   /**
+   * Type 00: ChatMessage
+   * Format: 00|timestamp|chatCode|sender|message|hash
+   *
+   * Detects countdown messages to set the pre-pull buffer duration.
+   * The first message (code 0139) has the full countdown:
+   *   "Battle commencing in 16 seconds! (PlayerNameServer)"
+   * Subsequent messages (code 0039) show 10, 5, then "Engage!".
+   */
+  private handleChatMessage(line: ACTLogLine) {
+    if (!this.inDutyInstance || this.inCCZone) return;
+
+    const message = line.field(2);
+    const match = message.match(/^Battle commencing in (\d+) seconds!/);
+
+    if (match) {
+      const seconds = parseInt(match[1], 10);
+
+      // Only store the first (longest) countdown value per pull.
+      if (this.countdownSeconds === undefined) {
+        this.countdownSeconds = seconds;
+        console.info(
+          '[FFXIVLogHandler] Countdown detected:',
+          seconds,
+          'seconds',
+        );
+      }
+    }
+  }
+
+  /**
    * Determine CC match result from crystal position and player team.
    * Crystal pushed to negative X = Astra wins, positive X = Umbra wins.
    * Returns true if the player's team won.
@@ -500,19 +536,28 @@ export default class FFXIVLogHandler extends EventEmitter {
     }
 
     // Use current time as the actual combat start for duration calculation.
-    // The 5-second pre-pull buffer is handled via the Activity's bufferSeconds.
+    // Pre-pull buffer: use countdown duration if available, else default 5s.
     const now = new Date();
+    const bufferSeconds = this.countdownSeconds ?? 5;
+    this.countdownSeconds = undefined;
 
     const encounter = new RaidEncounter(
       now,
       this.currentZoneId!,
       this.currentZoneName || 'Unknown',
       this.pullCount,
+      bufferSeconds,
     );
 
     if (this.playerEntityId) {
       encounter.playerEntityId = this.playerEntityId;
     }
+
+    console.info(
+      '[FFXIVLogHandler] Starting pull with',
+      bufferSeconds,
+      'second pre-pull buffer',
+    );
 
     await LogHandler.startActivity(encounter);
     this.emit('activity-start', encounter);
@@ -559,6 +604,7 @@ export default class FFXIVLogHandler extends EventEmitter {
     this.inGameCombat = false;
     this.pullCount = 0;
     this.raidResult = undefined;
+    this.countdownSeconds = undefined;
   }
 
   /**

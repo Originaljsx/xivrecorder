@@ -1,6 +1,6 @@
 {
   "name": "XIVRecorder",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Automatic FFXIV PvP gameplay recorder using IINACT logs",
   "keywords": [
     "ffxiv",
