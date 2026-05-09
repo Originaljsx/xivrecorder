@@ -76,7 +76,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "jacobaw",
+      "owner": "Originaljsx",
       "repo": "xivrecorder"
     }
   },
