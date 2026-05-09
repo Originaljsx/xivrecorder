@@ -12,11 +12,11 @@
  *   4. ActorControl (type 33) command 40000002 -> match end
  *
  * Raid Pull Lifecycle:
- *   1. Zone change (type 01) to an instanced duty
- *   2. ActorControl COMMENCE (40000001) in non-CC zone -> duty instance detected
- *   3. InCombat (type 260) inGameCombat 0→1 -> pull start
- *   4. InCombat inGameCombat 1→0 -> pull end
- *   5. ActorControl VICTORY (40000003) / FADE_OUT (40000005) -> result
+ *   1. Zone change (type 01) to a Savage/Ultimate zone -> duty instance armed
+ *   2. InCombat (type 260) inGameCombat 0→1 -> pull start
+ *      (or first NetworkAbility from player to NPC for ACT compatibility)
+ *   3. InCombat inGameCombat 1→0 -> pull end
+ *   4. ActorControl VICTORY (40000003) / FADE_OUT (40000005) -> result
  */
 import { EventEmitter } from 'events';
 import LogHandler from './LogHandler';
@@ -59,6 +59,12 @@ export default class FFXIVLogHandler extends EventEmitter {
 
   /** Last known X position of the Tactical Crystal. */
   private crystalLastX: number | undefined;
+
+  /** Maximum positive X the crystal reached (Astra's furthest push). */
+  private crystalMaxX = 0;
+
+  /** Minimum negative X the crystal reached (Umbra's furthest push). */
+  private crystalMinX = 0;
 
   /** Whether we're in a duty instance (received COMMENCE in non-CC zone). */
   private inDutyInstance = false;
@@ -196,30 +202,44 @@ export default class FFXIVLogHandler extends EventEmitter {
       // Don't start the activity yet — wait for ActorControl commence.
       // But emit an event so the recorder can start buffering.
       this.emit('start-buffer');
-    } else {
-      // Force-end any active raid pull on zone change.
-      if (this.inDutyInstance || this.inGameCombat) {
-        console.info('[FFXIVLogHandler] Left duty instance zone');
+      return;
+    }
 
-        if (LogHandler.isActivityInProgress() && !LogHandler.overrunning) {
-          this.endRaidPull(new Date(), false);
-        }
+    // Non-CC zone. Handle leaving CC if we were in one.
+    if (this.inCCZone) {
+      console.info('[FFXIVLogHandler] Left CC zone');
+      this.inCCZone = false;
 
-        this.resetRaidState();
+      if (LogHandler.isActivityInProgress() && !LogHandler.overrunning) {
+        this.emit('force-end');
+        this.endCCMatch(line.timestamp, false);
       }
 
-      if (this.inCCZone || LogHandler.isActivityInProgress()) {
-        console.info('[FFXIVLogHandler] Left CC zone');
-        this.inCCZone = false;
+      this.resetMatchState();
+    }
 
-        if (LogHandler.isActivityInProgress() && !LogHandler.overrunning) {
-          // Player left the arena — force end the match.
-          this.emit('force-end');
-          this.endCCMatch(line.timestamp, false);
-        }
-
-        this.resetMatchState();
+    // Raid zone enter/leave. The duty-instance flag is gated on the zone
+    // suffix alone — the ActorControl COMMENCE event is unreliable across
+    // IINACT versions and not emitted at all in some Ultimates (e.g. TOP).
+    if (this.isRaidZone()) {
+      if (!this.inDutyInstance) {
+        console.info(
+          '[FFXIVLogHandler] Entered raid duty instance:',
+          zoneName,
+        );
+        this.inDutyInstance = true;
+        this.pullCount = 0;
+        this.raidResult = undefined;
+        this.emit('start-buffer');
       }
+    } else if (this.inDutyInstance || this.inGameCombat) {
+      console.info('[FFXIVLogHandler] Left duty instance zone');
+
+      if (LogHandler.isActivityInProgress() && !LogHandler.overrunning) {
+        this.endRaidPull(new Date(), false);
+      }
+
+      this.resetRaidState();
     }
   }
 
@@ -315,13 +335,10 @@ export default class FFXIVLogHandler extends EventEmitter {
           'seconds',
         );
         this.startCCMatch(line.timestamp);
-      } else if (this.isRaidZone()) {
-        // COMMENCE in a raid zone = duty instance for pull tracking.
-        console.info('[FFXIVLogHandler] Raid duty instance commenced:', this.currentZoneName);
-        this.inDutyInstance = true;
-        this.pullCount = 0;
-        this.raidResult = undefined;
       }
+      // Note: COMMENCE in raid zones is intentionally not handled here.
+      // Some duties (notably TOP Ultimate) never emit it. The duty-instance
+      // flag is set on zone enter instead — see handleChangeZone.
     } else if (command === ActorControlType.MATCH_END) {
       console.info('[FFXIVLogHandler] CC match ended');
       // Defer match end slightly to allow TEAM_RESULT events to arrive
@@ -436,7 +453,11 @@ export default class FFXIVLogHandler extends EventEmitter {
     const entityId = line.field(0);
     if (entityId !== this.crystalEntityId) return;
 
-    this.crystalLastX = line.fieldFloat(4);
+    const x = line.fieldFloat(4);
+    this.crystalLastX = x;
+
+    if (x > this.crystalMaxX) this.crystalMaxX = x;
+    if (x < this.crystalMinX) this.crystalMinX = x;
   }
 
   /**
@@ -513,17 +534,18 @@ export default class FFXIVLogHandler extends EventEmitter {
       return playerWon;
     }
 
-    // Method 2: Crystal position fallback (works for all match types)
+    // Method 2: Crystal max push fallback (works for all match types)
+    // The team that pushed the crystal furthest from center wins.
+    // crystalMaxX = Astra's furthest push, |crystalMinX| = Umbra's furthest push.
     if (this.crystalLastX !== undefined) {
-      // Crystal advances toward the controlling team's side:
-      //   positive X = Astra side = Astra winning
-      //   negative X = Umbra side = Umbra winning
-      const astraWon = this.crystalLastX > 0;
+      const astraPush = this.crystalMaxX;
+      const umbraPush = Math.abs(this.crystalMinX);
+      const astraWon = astraPush >= umbraPush;
       const playerWon = astraWon === playerIsAstra;
 
       console.info(
-        '[FFXIVLogHandler] Match result (crystal position):',
-        `crystal X=${this.crystalLastX.toFixed(2)},`,
+        '[FFXIVLogHandler] Match result (max crystal push):',
+        `Astra push=${astraPush.toFixed(2)}, Umbra push=${umbraPush.toFixed(2)},`,
         `${astraWon ? 'Astra' : 'Umbra'} wins,`,
         `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
         `result=${playerWon ? 'WIN' : 'LOSS'}`,
@@ -747,6 +769,8 @@ export default class FFXIVLogHandler extends EventEmitter {
     this._pendingCombatants = undefined;
     this.crystalEntityId = undefined;
     this.crystalLastX = undefined;
+    this.crystalMaxX = 0;
+    this.crystalMinX = 0;
     this.ccWinningTeamIndex = undefined;
     if (this.matchEndTimer) {
       clearTimeout(this.matchEndTimer);

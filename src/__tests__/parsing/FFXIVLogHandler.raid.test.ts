@@ -111,16 +111,13 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
     handler.feedLine(line);
   }
 
-  /** Set up player + zone + COMMENCE for a raid duty instance. */
+  /** Set up player + zone for a raid duty instance. */
   function enterDutyInstance() {
     feed(
       '02|2026-03-10T20:34:34.2140000+00:00|107C5CF7|Crow Xo|hash',
     );
     feed(
       '01|2026-03-10T20:34:48.2780000+00:00|2B7|Deltascape V1.0 (Savage)|hash',
-    );
-    feed(
-      '33|2026-03-10T20:34:59.7240000+00:00|80037565|40000001|1518|00|00|00|hash',
     );
   }
 
@@ -236,14 +233,14 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
   });
 
   describe('InCombat ignored outside duty instance', () => {
-    it('ignores InCombat when not in duty instance', () => {
+    it('ignores InCombat in non-raid zones', () => {
       feed(
         '02|2026-03-10T20:34:34.2140000+00:00|107C5CF7|Crow Xo|hash',
       );
+      // Open-world zone, not a raid
       feed(
-        '01|2026-03-10T20:34:48.2780000+00:00|2B7|Deltascape V1.0 (Savage)|hash',
+        "01|2026-03-10T20:34:48.2780000+00:00|FA|Wolves' Den Pier|hash",
       );
-      // No COMMENCE — not in duty instance yet
 
       feed('260|2026-03-10T20:35:01.3920000+00:00|1|1|0|1|hash');
 
@@ -645,28 +642,22 @@ describe('FFXIVLogHandler — Raid Pull Detection', () => {
       expect((LogHandler.activity as RaidEncounter).bufferSeconds).toBe(5);
     });
 
-    it('ignores countdown messages outside duty instance', () => {
-      // Set up player + zone but NO COMMENCE
+    it('ignores countdown messages in non-raid zones', () => {
       feed(
         '02|2026-03-10T20:34:34.2140000+00:00|107C5CF7|Crow Xo|hash',
       );
+      // Open-world zone, not a raid
       feed(
-        '01|2026-03-10T20:34:48.2780000+00:00|2B7|Deltascape V1.0 (Savage)|hash',
+        "01|2026-03-10T20:34:48.2780000+00:00|FA|Wolves' Den Pier|hash",
       );
 
-      // Countdown before COMMENCE — should be ignored
+      // Countdown outside any raid zone — should not arm anything
       feed(
         '00|2026-03-10T20:34:50.0000000+00:00|0139||Battle commencing in 15 seconds! (Crow XoServer)|hash',
       );
 
-      // Now COMMENCE
-      feed(
-        '33|2026-03-10T20:34:59.7240000+00:00|80037565|40000001|1518|00|00|00|hash',
-      );
-
-      // Pull starts — should use default 5s since countdown was before duty instance
       feed('260|2026-03-10T20:35:01.0000000+00:00|1|1|0|1|hash');
-      expect((LogHandler.activity as RaidEncounter).bufferSeconds).toBe(5);
+      expect(LogHandler.activity).toBeUndefined();
     });
 
     it('uses first countdown value when multiple countdowns fire', () => {
