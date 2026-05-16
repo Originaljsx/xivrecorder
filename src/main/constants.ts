@@ -15,6 +15,7 @@ export const ccTerritories: Record<number, string> = {
   1116: 'Clockwork Castletown',
   1138: 'The Red Sands',
   1293: 'Bayside Battleground',
+  1357: 'Archeia Harmonias',
   // Custom
   1058: 'The Palaistra',
   1059: 'The Volcanic Heart',
@@ -22,6 +23,7 @@ export const ccTerritories: Record<number, string> = {
   1117: 'Clockwork Castletown',
   1139: 'The Red Sands',
   1294: 'Bayside Battleground',
+  1358: 'Archeia Harmonias',
 };
 
 /** Set of all CC territory IDs for fast lookup. */
@@ -30,10 +32,10 @@ export const ccTerritoryIds = new Set(
 );
 
 /** Set of ranked/casual CC territory IDs (not custom). */
-export const ccRankedCasualIds = new Set([1032, 1033, 1034, 1116, 1138, 1293]);
+export const ccRankedCasualIds = new Set([1032, 1033, 1034, 1116, 1138, 1293, 1357]);
 
 /** Set of custom CC territory IDs. */
-export const ccCustomIds = new Set([1058, 1059, 1060, 1117, 1139, 1294]);
+export const ccCustomIds = new Set([1058, 1059, 1060, 1117, 1139, 1294, 1358]);
 
 /**
  * ActorControl command IDs relevant to PvP.

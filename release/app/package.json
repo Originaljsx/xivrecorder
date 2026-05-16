@@ -1,6 +1,6 @@
 {
   "name": "XIVRecorder",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Automatic FFXIV PvP gameplay recorder",
   "main": "./dist/main/main.js",
   "author": {
