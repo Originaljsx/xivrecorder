@@ -67,6 +67,8 @@ jest.mock('../../main/VideoProcessQueue', () => ({
 // Mock emitErrorReport from util
 jest.mock('../../main/util', () => ({
   emitErrorReport: jest.fn(),
+  detectIINACTLogPath: jest.fn(),
+  hasNetworkLogs: jest.fn().mockReturnValue(true),
   checkDisk: jest.fn(),
   exists: jest.fn(),
   isFolderOwned: jest.fn(),
@@ -74,6 +76,8 @@ jest.mock('../../main/util', () => ({
   takeOwnershipStorageDir: jest.fn(),
 }));
 
+import fs from 'fs';
+import path from 'path';
 import FFXIVLogHandler from '../../parsing/FFXIVLogHandler';
 import LogHandler from '../../parsing/LogHandler';
 import CCMatch from '../../activitys/CCMatch';
@@ -207,97 +211,141 @@ describe('FFXIVLogHandler', () => {
       expect(player).toBeDefined();
       expect(player!.name).toBe('Hinanawi Tenshi');
       expect(player!.jobId).toBe(0x1e); // NIN
-      expect(player!.teamId).toBe(1); // Astra (positive X)
+      expect(player!.teamId).toBe(1); // Local player's team
       expect(player!.worldName).toBe('Fenrir');
 
       const enemy = match.getCombatant('10075825');
       expect(enemy).toBeDefined();
       expect(enemy!.name).toBe('Amimi Ami');
-      expect(enemy!.teamId).toBe(2); // Umbra (negative X)
+      expect(enemy!.teamId).toBe(2); // Opposite spawn cluster
     });
   });
 
   describe('match result detection', () => {
-    it('detects win via TEAM_RESULT (Astra player, team 1 wins)', () => {
+    const CRYSTAL_ID = '40000C79';
+
+    function setupMatch() {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
 
-      // Player on Astra (positive X)
+      // Local player's cluster (+X, -Y) and the enemy cluster (-X, +Y).
       feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
+      feed('03|2026-03-06T10:31:51.9220000-08:00|103199CA|Astro Phyllite|23|3A|0000|1E|Unicorn|0|0|58500|58500|10000|10000|||89.15|-88.81|12.00|-0.00|hash');
+      feed('03|2026-03-06T10:31:51.9220000-08:00|10075825|Amimi Ami|22|3A|0000|3B|Ifrit|0|0|61500|61500|10000|10000|||-87.67|91.82|12.00|-3.14|hash');
+      feed('03|2026-03-06T10:31:51.9220000-08:00|100F8629|Clavellina Hart|15|64|0000|3A|Garuda|0|0|66000|66000|10000|10000|||-90.85|91.18|12.00|-3.14|hash');
+      // Tactical Crystal at the centre.
+      feed(`03|2026-03-06T10:31:51.9220000-08:00|${CRYSTAL_ID}|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash`);
 
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+    }
 
-      // MATCH_END followed by TEAM_RESULT (winning team = 1 = Astra)
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+    function crystalAt(x: number, y: number, t = '10:34:00.0000000') {
+      feed(`270|2026-03-06T${t}-08:00|${CRYSTAL_ID}|-1.5709|0000|001E|${x}|${y}|4.0436|hash`);
+    }
 
-      const endEvent = events.find((e) => e.name === 'activity-end');
-      expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(true); // Win
-    });
-
-    it('detects loss via TEAM_RESULT (Astra player, team 0 wins)', () => {
-      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
-      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
-
-      // Player on Astra (positive X)
-      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
-
-      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
-
-      // MATCH_END followed by TEAM_RESULT (winning team = 0 = Umbra)
+    function endMatch() {
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
-
+      jest.runAllTimers();
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(false); // Loss
+      return endEvent!.data.getMetadata();
+    }
+
+    it('wins when we pushed the crystal furthest towards the enemy goal', () => {
+      setupMatch();
+      // Enemy pushed it a bit towards us, then we pushed it most of the way.
+      crystalAt(20, -20);
+      crystalAt(-60, 60);
+      crystalAt(-30, 30);
+      const meta = endMatch();
+      expect(meta.result).toBe(true);
+      expect(meta.resultSource).toBe('crystal');
     });
 
-    it('falls back to crystal position when TEAM_RESULT not available (win)', () => {
+    it('loses when the enemy pushed the crystal furthest', () => {
+      setupMatch();
+      crystalAt(-15, 15);
+      crystalAt(70, -70);
+      const meta = endMatch();
+      expect(meta.result).toBe(false);
+      expect(meta.resultSource).toBe('crystal');
+    });
+
+    it('ignores crystal movement perpendicular to the lane', () => {
+      setupMatch();
+      crystalAt(50, 50); // sideways
+      crystalAt(-10, 10); // slight push by us
+      const meta = endMatch();
+      expect(meta.result).toBe(true);
+      expect(meta.resultSource).toBe('crystal');
+    });
+
+    it('also reads crystal position from CombatantMemory (261) lines', () => {
+      setupMatch();
+      feed(`261|2026-03-06T10:34:00.0000000-08:00|Change|${CRYSTAL_ID}|PosX|-55.0|PosY|55.0|hash`);
+      const meta = endMatch();
+      expect(meta.result).toBe(true);
+      expect(meta.resultSource).toBe('crystal');
+    });
+
+    it('ignores crystal samples from before the match commenced', () => {
       feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
       feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
-
-      // Player on Astra (positive X)
       feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
-      // Tactical Crystal
-      feed('03|2026-03-06T10:31:51.9220000-08:00|40000C79|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
-
+      feed('03|2026-03-06T10:31:51.9220000-08:00|10075825|Amimi Ami|22|3A|0000|3B|Ifrit|0|0|61500|61500|10000|10000|||-87.67|91.82|12.00|-3.14|hash');
+      feed(`03|2026-03-06T10:31:51.9220000-08:00|${CRYSTAL_ID}|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash`);
+      crystalAt(90, -90, '10:32:00.0000000'); // pre-match placement noise
       feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
+      crystalAt(-20, 20);
+      const meta = endMatch();
+      expect(meta.result).toBe(true);
+    });
 
-      // Crystal at positive X (Astra side) = Astra winning
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|80.0641|29.9839|4.0436|hash');
+    it('does not guess a result from TEAM_RESULT alone', () => {
+      setupMatch();
+      const meta = endMatch();
+      expect(meta.result).toBe(false);
+      expect(meta.resultSource).toBe('team-result-unresolved');
+    });
 
-      // MATCH_END without TEAM_RESULT — needs timer flush
+    it('reports unknown when there is no crystal data and no TEAM_RESULT', () => {
+      setupMatch();
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
+      jest.runAllTimers();
+      const endEvent = events.find((e) => e.name === 'activity-end');
+      expect(endEvent!.data.getMetadata().resultSource).toBe('unknown');
+    });
+  });
+
+  describe('real custom match replay (Clockwork Castletown, 2026-09-19)', () => {
+    it('reproduces the loss PvpStats recorded for this match', () => {
+      // Real IINACT log, filtered to the lines the handler consumes and with
+      // player names anonymised. PvpStats recorded: local player on Umbra,
+      // Astra won 100.0 to 0.6.
+      const file = path.join(
+        __dirname,
+        '../../../tests/logs/ffxiv/cc_castletown_custom_loss.log',
+      );
+      const lines = fs.readFileSync(file, 'utf-8').split('\n');
+      for (const line of lines) {
+        if (line.trim()) feed(line.trim());
+      }
       jest.runAllTimers();
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(true); // Win via crystal fallback
-    });
+      const meta = endEvent!.data.getMetadata();
 
-    it('falls back to crystal position when TEAM_RESULT not available (loss)', () => {
-      feed('02|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|hash');
-      feed('01|2026-03-06T10:31:51.9220000-08:00|40A|Cloud Nine|hash');
-
-      feed('03|2026-03-06T10:31:51.9220000-08:00|1032524C|Hinanawi Tenshi|1E|52|0000|2E|Fenrir|0|0|60000|60000|10000|10000|||92.33|-88.18|12.00|-0.00|hash');
-      feed('03|2026-03-06T10:31:51.9220000-08:00|40000C79|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
-
-      feed('33|2026-03-06T10:32:24.7860000-08:00|80039C5D|40000001|12C|00|00|00|hash');
-
-      // Crystal at negative X (Umbra side) = Umbra winning
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000C79|-1.5709|0000|001E|-75.1234|29.9839|4.0436|hash');
-
-      // MATCH_END without TEAM_RESULT — needs timer flush
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      jest.runAllTimers();
-
-      const endEvent = events.find((e) => e.name === 'activity-end');
-      expect(endEvent).toBeDefined();
-      expect(endEvent!.data.result).toBe(false); // Loss via crystal fallback
+      expect(meta.zoneName).toBe('Clockwork Castletown');
+      expect(meta.combatants.length).toBe(10);
+      expect(meta.combatants.filter((c: any) => c._teamId === 1).length).toBe(5);
+      expect(meta.combatants.filter((c: any) => c._teamId === 2).length).toBe(5);
+      expect(meta.player?._teamId).toBe(1);
+      expect(meta.resultSource).toBe('crystal');
+      expect(meta.result).toBe(false);
+      expect(meta.deaths.length).toBeGreaterThan(0);
     });
   });
 
@@ -338,33 +386,39 @@ describe('FFXIVLogHandler', () => {
       expect(match.combatantMap.size).toBe(10);
       expect(match.playerEntityId).toBe('1032524C');
 
-      // Verify teams
-      const astraPlayers = Array.from(match.combatantMap.values()).filter(
+      // Verify teams (1 = local player's spawn cluster, 2 = the other)
+      const friendly = Array.from(match.combatantMap.values()).filter(
         (c) => c.teamId === 1,
       );
-      const umbraPlayers = Array.from(match.combatantMap.values()).filter(
+      const enemy = Array.from(match.combatantMap.values()).filter(
         (c) => c.teamId === 2,
       );
-      expect(astraPlayers.length).toBe(5);
-      expect(umbraPlayers.length).toBe(5);
+      expect(friendly.length).toBe(5);
+      expect(enemy.length).toBe(5);
+      expect(friendly.map((c) => c.name)).toContain('Kai Sumeragi');
+      expect(enemy.map((c) => c.name)).toContain('Sui Ca');
 
-      // Crystal position tracking (crystal at positive X = Astra winning)
+      // Crystal pushed towards the enemy spawn (-X, +Y) = our team winning.
       feed('03|2026-03-06T10:31:51.9220000-08:00|40000724|Tactical Crystal|00|1|0000|00||11350|14470|100|100|100|10000|||0.00|0.00|1.00|-0.00|hash');
-      feed('270|2026-03-06T10:34:50.0000000-08:00|40000724|-1.5709|0000|001E|80.0641|29.9839|4.0436|hash');
+      feed('270|2026-03-06T10:33:10.0000000-08:00|40000724|-1.5709|0000|001E|25.0|-25.0|4.0436|hash');
+      feed('270|2026-03-06T10:34:50.0000000-08:00|40000724|-1.5709|0000|001E|-80.0641|79.9839|4.0436|hash');
 
-      // Match end + TEAM_RESULT (Astra = team 1 wins)
+      // Match end + both TEAM_RESULT lines exactly as in the real log.
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000002|12|00|00|00|hash');
-      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
       feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|00|00|00|00|hash');
+      feed('33|2026-03-06T10:34:51.5080000-08:00|80039C5D|40000007|01|00|00|00|hash');
 
       const endEvent = events.find((e) => e.name === 'activity-end');
       expect(endEvent).toBeDefined();
 
       // Verify the match metadata
       const activity = endEvent!.data;
-      expect(activity.getMetadata().zoneName).toBe('Cloud Nine');
-      expect(activity.getMetadata().combatants.length).toBe(10);
-      expect(activity.getMetadata().result).toBe(true); // Astra player won
+      const meta = activity.getMetadata();
+      expect(meta.zoneName).toBe('Cloud Nine');
+      expect(meta.combatants.length).toBe(10);
+      expect(meta.result).toBe(true);
+      expect(meta.resultSource).toBe('crystal');
+      expect(meta.player?._teamId).toBe(1);
     });
   });
 });

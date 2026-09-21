@@ -40,3 +40,8 @@ buffer
 
 # Some stuff OBS window capture creates at runtime?
 win-capture/
+
+# pvpstats-export helper build output
+tools/**/bin/
+tools/**/obj/
+tools/**/publish/

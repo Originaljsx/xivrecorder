@@ -11,6 +11,7 @@ import {
 import { VideoCategory } from '../types/VideoCategory';
 import Poller from '../utils/Poller';
 import FFXIVLogHandler from '../parsing/FFXIVLogHandler';
+import PvpStatsLink from './PvpStatsLink';
 import Recorder from './Recorder';
 import ConfigService from '../config/ConfigService';
 import {
@@ -123,6 +124,12 @@ export default class Manager {
     }
 
     this.reconfiguring = false;
+
+    // Backfill PvpStats scoreboards for any CC recordings that don't have
+    // one yet (e.g. recorded before the plugin was installed).
+    PvpStatsLink.getInstance()
+      .linkAllUnlinked()
+      .catch((e) => console.error('[Manager] PvpStats backfill error', String(e)));
   }
 
   /**
@@ -156,6 +163,12 @@ export default class Manager {
 
     await DiskClient.getInstance().refreshStatus();
     await DiskClient.getInstance().refreshVideos();
+
+    // Backfill PvpStats scoreboards for any CC recordings that don't have
+    // one yet (e.g. recorded before the plugin was installed).
+    PvpStatsLink.getInstance()
+      .linkAllUnlinked()
+      .catch((e) => console.error('[Manager] PvpStats backfill error', String(e)));
   }
 
   /**

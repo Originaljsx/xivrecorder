@@ -19,6 +19,8 @@ import {
   logAxiosError,
   tryUnlink,
 } from './util';
+import PvpStatsLink from './PvpStatsLink';
+import { VideoCategory } from '../types/VideoCategory';
 import CloudClient from '../storage/CloudClient';
 import { send } from './main';
 import ffmpeg from 'fluent-ffmpeg';
@@ -229,6 +231,12 @@ export default class VideoProcessQueue {
       );
 
       await writeMetadataFile(videoPath, data.metadata);
+
+      if (data.metadata.category === VideoCategory.CrystallineConflict) {
+        // Fire and forget: pulls the scoreboard/result from PvpStats once
+        // the plugin has written the match, retrying for a few minutes.
+        PvpStatsLink.getInstance().linkVideo(videoPath);
+      }
 
       const readyToUpload = await CloudClient.getInstance().ready();
       const upload = readyToUpload && shouldUpload(this.cfg, data.metadata);

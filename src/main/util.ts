@@ -953,18 +953,80 @@ const runFirstTimeSetupActionsObs = () => {
   }
 };
 
+/**
+ * Does a directory contain at least one IINACT network log?
+ */
+const hasNetworkLogs = (dir: string): boolean => {
+  try {
+    return fs
+      .readdirSync(dir)
+      .some((f) => f.startsWith('Network_') && f.endsWith('.log'));
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Work out where IINACT is actually writing its logs.
+ *
+ * The naive %USERPROFILE%\Documents\IINACT guess is wrong whenever Windows
+ * redirects Documents to OneDrive, so we prefer, in order:
+ *   1. The LogFilePath in IINACT's own Dalamud config.
+ *   2. Electron's notion of the Documents folder (follows the redirect).
+ *   3. The plain and OneDrive profile paths.
+ * Directories that already contain a Network_*.log win over empty ones.
+ */
+const detectIINACTLogPath = (): string | undefined => {
+  const candidates: string[] = [];
+
+  try {
+    const iinactConfig = path.join(
+      app.getPath('appData'),
+      'XIVLauncher',
+      'pluginConfigs',
+      'IINACT.json',
+    );
+
+    if (existsSync(iinactConfig)) {
+      const parsed = JSON.parse(fs.readFileSync(iinactConfig, 'utf-8'));
+      if (typeof parsed.LogFilePath === 'string' && parsed.LogFilePath) {
+        candidates.push(parsed.LogFilePath);
+      }
+    }
+  } catch (e) {
+    console.warn('[Util] Could not read IINACT config:', String(e));
+  }
+
+  try {
+    candidates.push(path.join(app.getPath('documents'), 'IINACT'));
+  } catch {
+    // Not fatal.
+  }
+
+  candidates.push(defaultIINACTLogPath());
+  const home = process.env.USERPROFILE || process.env.HOME;
+  if (home) candidates.push(path.join(home, 'OneDrive', 'Documents', 'IINACT'));
+
+  const existing = candidates.filter((c) => existsSync(c));
+  const withLogs = existing.find(hasNetworkLogs);
+  const found = withLogs ?? existing[0];
+
+  console.info('[Util] IINACT log path candidates:', candidates, '->', found);
+  return found;
+};
+
 const runFirstTimeSetupActionsNoObs = () => {
   const cfg = ConfigService.getInstance();
 
   // Auto-detect IINACT log directory.
   if (!cfg.get<string>('iinactLogPath')) {
-    const iinactPath = defaultIINACTLogPath();
+    const iinactPath = detectIINACTLogPath();
 
-    if (existsSync(iinactPath)) {
+    if (iinactPath) {
       console.info('[Util] Found IINACT log directory at', iinactPath);
       cfg.set('iinactLogPath', iinactPath);
     } else {
-      console.warn('[Util] IINACT log directory not found at default path');
+      console.warn('[Util] IINACT log directory not found at any default path');
     }
   }
 
@@ -979,6 +1041,8 @@ const runFirstTimeSetupActionsNoObs = () => {
 };
 
 export {
+  detectIINACTLogPath,
+  hasNetworkLogs,
   setupApplicationLogging,
   writeMetadataFile,
   deleteVideoDisk,

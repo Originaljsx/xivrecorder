@@ -37,6 +37,7 @@ export const getSettings = (): ConfigurationSchema => {
     obsRecEncoder: getConfigValue<string>('obsRecEncoder'),
     recordCrystallineConflict: getConfigValue<boolean>('recordCrystallineConflict'),
     recordRaids: getConfigValue<boolean>('recordRaids'),
+    linkPvpStats: getConfigValue<boolean>('linkPvpStats'),
     captureCursor: getConfigValue<boolean>('captureCursor'),
     minimizeOnQuit: getConfigValue<boolean>('minimizeOnQuit'),
     minimizeToTray: getConfigValue<boolean>('minimizeToTray'),

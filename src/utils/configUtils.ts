@@ -15,7 +15,9 @@ import { Language, Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
 import {
   checkDisk,
+  detectIINACTLogPath,
   exists,
+  hasNetworkLogs,
   isFolderOwned,
   takeOwnershipBufferDir,
   takeOwnershipStorageDir,
@@ -257,6 +259,23 @@ const validateBaseConfig = async (config: BaseConfig) => {
       throw new Error(
         `IINACT log directory not found: ${iinactLogPath}. Make sure IINACT is installed and the log path is correct.`,
       );
+    }
+
+    // A common trap: Documents is redirected to OneDrive, so the configured
+    // folder exists but IINACT is writing somewhere else.
+    if (!hasNetworkLogs(iinactLogPath)) {
+      const detected = detectIINACTLogPath();
+      if (detected && detected !== iinactLogPath && hasNetworkLogs(detected)) {
+        console.warn(
+          '[Manager] No IINACT logs in',
+          iinactLogPath,
+          'but found some in',
+          detected,
+        );
+        throw new Error(
+          `No IINACT logs found in ${iinactLogPath}, but IINACT appears to be writing to ${detected}. Update the IINACT Log Path setting.`,
+        );
+      }
     }
   }
 };

@@ -40,6 +40,7 @@ import { Direction } from 're-resizable/lib/resizer';
 import VideoPlayer, { VideoPlayerRef } from './VideoPlayer';
 import Label from './components/Label/Label';
 import ViewpointSelection from './components/Viewpoints/ViewpointSelection';
+import MatchStats from './MatchStats';
 import useTable from './components/Tables/TableData';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DateRangePicker from './DateRangePicker';
@@ -228,6 +229,11 @@ const CategoryPage = (props: IProps) => {
             persistentProgress={persistentProgress}
           />
         </div>
+        {activeParentVideo.category === VideoCategory.CrystallineConflict && (
+          <div className="w-full overflow-y-auto">
+            <MatchStats video={activeParentVideo} />
+          </div>
+        )}
         {renderChat(chatVideo)}
       </div>
     );

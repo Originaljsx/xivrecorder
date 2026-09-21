@@ -33,10 +33,16 @@ const FFXIVSettings = (props: IProps) => {
       iinactLogPath: config.iinactLogPath,
       recordCrystallineConflict: config.recordCrystallineConflict,
       recordRaids: config.recordRaids,
+      linkPvpStats: config.linkPvpStats,
     });
 
     ipc.reconfigureBase();
-  }, [config.iinactLogPath, config.recordCrystallineConflict, config.recordRaids]);
+  }, [
+    config.iinactLogPath,
+    config.recordCrystallineConflict,
+    config.recordRaids,
+    config.linkPvpStats,
+  ]);
 
   const setIINACTLogPath = async () => {
     const newPath = await pathSelect();
@@ -62,6 +68,13 @@ const FFXIVSettings = (props: IProps) => {
     setConfig((prev) => ({
       ...prev,
       recordRaids: checked,
+    }));
+  };
+
+  const setLinkPvpStats = (checked: boolean) => {
+    setConfig((prev) => ({
+      ...prev,
+      linkPvpStats: checked,
     }));
   };
 
@@ -144,6 +157,25 @@ const FFXIVSettings = (props: IProps) => {
               checked={Boolean(config.recordRaids)}
               name="recordRaids"
               onCheckedChange={setRecordRaids}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col w-[220px]">
+          <Label htmlFor="linkPvpStats" className="flex items-center">
+            Import PvpStats results
+            <Tooltip
+              content="If the PvpStats Dalamud plugin is installed, pull the real match result, teams and scoreboard into each Crystalline Conflict recording."
+              side="right"
+            >
+              <Info size={20} className="inline-flex ml-2" />
+            </Tooltip>
+          </Label>
+          <div className="flex h-10 items-center">
+            <Switch
+              checked={Boolean(config.linkPvpStats)}
+              name="linkPvpStats"
+              onCheckedChange={setLinkPvpStats}
             />
           </div>
         </div>

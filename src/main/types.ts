@@ -135,6 +135,14 @@ type Metadata = {
   date?: number; // alias for start, used by some FFXIV activities
   clippedAt?: number; // epoch time of clipping
   result: boolean;
+  /** How the result was determined (CC): pvpstats | crystal | unknown. */
+  resultSource?: string;
+  /** CC: the local player's team name (Astra/Umbra), once linked to PvpStats. */
+  localTeam?: string;
+  /** CC: the winning team name (Astra/Umbra), once linked to PvpStats. */
+  winner?: string;
+  /** CC: scoreboard imported from the PvpStats Dalamud plugin. */
+  pvpStats?: PvpStatsMatch;
   zoneID?: number;
   zoneName?: string;
   player?: RawCombatant;
@@ -146,6 +154,68 @@ type Metadata = {
   uniqueHash?: string; // used for cloud video grouping
   protected?: boolean;
   appVersion?: string;
+};
+
+/**
+ * One player's line on a Crystalline Conflict scoreboard, as exported from
+ * the PvpStats plugin's database by tools/pvpstats-export.
+ */
+type PvpStatsPlayer = {
+  name: string;
+  world: string;
+  job: string;
+  jobId: number;
+  team: 'Astra' | 'Umbra';
+  rankTier?: string;
+  rankRiser?: number;
+  kills?: number;
+  deaths?: number;
+  assists?: number;
+  damageDealt?: number;
+  damageTaken?: number;
+  hpRestored?: number;
+  /** Seconds. */
+  timeOnCrystal?: number;
+};
+
+type PvpStatsTeam = {
+  progress: number;
+  players: PvpStatsPlayer[];
+  kills?: number;
+  deaths?: number;
+  assists?: number;
+  damageDealt?: number;
+  damageTaken?: number;
+  hpRestored?: number;
+};
+
+type PvpStatsRank = {
+  tier: string;
+  riser: number;
+  stars: number;
+  credit: number;
+};
+
+/**
+ * A completed Crystalline Conflict match from PvpStats.
+ */
+type PvpStatsMatch = {
+  id: string;
+  dutyStart?: number;
+  matchStart?: number;
+  matchEnd?: number;
+  arena?: string;
+  matchType?: string;
+  territoryId?: number;
+  winner: 'Astra' | 'Umbra' | 'Unknown';
+  localPlayer?: string;
+  localTeam?: 'Astra' | 'Umbra';
+  isOvertime?: boolean;
+  /** Seconds. */
+  duration?: number;
+  rankBefore?: PvpStatsRank;
+  rankAfter?: PvpStatsRank;
+  teams: { Astra?: PvpStatsTeam; Umbra?: PvpStatsTeam };
 };
 
 /**
@@ -564,6 +634,10 @@ export {
   AudioSourceType,
   AppState,
   RawCombatant,
+  PvpStatsMatch,
+  PvpStatsPlayer,
+  PvpStatsTeam,
+  PvpStatsRank,
   TPreviewPosition,
   DeviceType,
   Pages,

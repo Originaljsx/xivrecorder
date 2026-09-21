@@ -68,6 +68,8 @@ jest.mock('../../main/VideoProcessQueue', () => ({
 // Mock emitErrorReport from util
 jest.mock('../../main/util', () => ({
   emitErrorReport: jest.fn(),
+  detectIINACTLogPath: jest.fn(),
+  hasNetworkLogs: jest.fn().mockReturnValue(true),
   checkDisk: jest.fn(),
   exists: jest.fn(),
   isFolderOwned: jest.fn(),

@@ -9,12 +9,15 @@ import { ccTerritories, ccCustomIds } from '../main/constants';
 export default class CCMatch extends Activity {
   private _zoneName: string;
 
+  /** How the result was derived: crystal | team-result-unresolved | unknown. */
+  public resultSource = 'unknown';
+
   constructor(startDate: Date, zoneId: number) {
     super(startDate, VideoCategory.CrystallineConflict);
     this._zoneID = zoneId;
     this._zoneName = ccTerritories[zoneId] || 'Unknown Arena';
-    // Small overrun to capture post-match animations/results screen.
-    this._overrun = 3;
+    // Overrun captures the results screen after the match ends.
+    this._overrun = 6;
   }
 
   get zoneName(): string {
@@ -51,6 +54,7 @@ export default class CCMatch extends Activity {
       zoneID: this.zoneID,
       zoneName: this._zoneName,
       result: this.result,
+      resultSource: this.resultSource,
       duration: this.duration,
       deaths: this.deaths,
       combatants,

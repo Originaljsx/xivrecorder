@@ -11,6 +11,9 @@ export default class Combatant {
   private _level?: number;
   private _worldName?: string;
   private _teamId?: number;
+  /** Arena X/Y at the time the combatant was added (transient, not persisted). */
+  private _spawnX?: number;
+  private _spawnY?: number;
 
   constructor(entityId: string) {
     this._entityId = entityId;
@@ -62,6 +65,22 @@ export default class Combatant {
 
   set teamId(value: number | undefined) {
     this._teamId = value;
+  }
+
+  get spawnX() {
+    return this._spawnX;
+  }
+
+  set spawnX(value: number | undefined) {
+    this._spawnX = value;
+  }
+
+  get spawnY() {
+    return this._spawnY;
+  }
+
+  set spawnY(value: number | undefined) {
+    this._spawnY = value;
   }
 
   /**

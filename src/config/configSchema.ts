@@ -19,6 +19,7 @@ export type ConfigurationSchema = {
   obsRecEncoder: string;
   recordCrystallineConflict: boolean;
   recordRaids: boolean;
+  linkPvpStats: boolean;
   captureCursor: boolean;
   minimizeOnQuit: boolean;
   minimizeToTray: boolean;
@@ -165,6 +166,12 @@ export const configSchema: Record<string, any> = {
   },
   recordRaids: {
     description: 'Record raid and trial boss pulls',
+    type: 'boolean',
+    default: true,
+  },
+  linkPvpStats: {
+    description:
+      'Import Crystalline Conflict results and scoreboards from the PvpStats Dalamud plugin',
     type: 'boolean',
     default: true,
   },

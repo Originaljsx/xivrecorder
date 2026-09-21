@@ -51,9 +51,9 @@ describe('CCMatch', () => {
     const match = new CCMatch(start, 1034);
     match.end(end, true);
 
-    // ~146.7 seconds + 3 second overrun
-    expect(match.duration).toBeGreaterThan(146);
-    expect(match.duration).toBeLessThan(150);
+    // ~146.7 seconds + 6 second overrun
+    expect(match.duration).toBeGreaterThan(152);
+    expect(match.duration).toBeLessThan(154);
   });
 
   it('tracks player deaths', () => {

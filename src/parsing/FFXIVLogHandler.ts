@@ -11,6 +11,17 @@
  *   3. ActorControl (type 33) command 40000001 -> match start
  *   4. ActorControl (type 33) command 40000002 -> match end
  *
+ * CC Result Detection:
+ *   Tactical Crystal push: the crystal's position (type 270/271/261) is
+ *   projected onto the lane between the two spawn clusters. The team that
+ *   pushed it furthest towards the enemy goal wins (this is the game's own
+ *   time-out rule; verified against PvpStats history on real matches).
+ *   ActorControl 40000007 ordering is logged but never used as a result.
+ *
+ * Teams are relative (1 = local player's team, 2 = enemy). After the video
+ * is saved, PvpStatsLink may replace the result and team labels with the
+ * authoritative ones from the PvpStats plugin.
+ *
  * Raid Pull Lifecycle:
  *   1. Zone change (type 01) to a Savage/Ultimate zone -> duty instance armed
  *   2. InCombat (type 260) inGameCombat 0→1 -> pull start
@@ -30,11 +41,17 @@ import { VideoCategory } from '../types/VideoCategory';
 import {
   isCCTerritory,
   isPlayerEntity,
-  getTeamFromPosition,
+  isTacticalCrystal,
+  assignTeamsBySpawn,
+  teamForPosition,
+  crystalProgressAlongLane,
+  Point2,
+  SpawnTeams,
 } from './ffxivutils';
 
 export default class FFXIVLogHandler extends EventEmitter {
   private watcher: IINACTLogWatcher;
+
 
   /** The player's own entity ID, from ChangePrimaryPlayer (type 02). */
   private playerEntityId: string | undefined;
@@ -57,14 +74,23 @@ export default class FFXIVLogHandler extends EventEmitter {
   /** Entity ID of the Tactical Crystal in the current match. */
   private crystalEntityId: string | undefined;
 
-  /** Last known X position of the Tactical Crystal. */
-  private crystalLastX: number | undefined;
+  /** Last known arena position of the Tactical Crystal. */
+  private crystalLast: Point2 | undefined;
 
-  /** Maximum positive X the crystal reached (Astra's furthest push). */
-  private crystalMaxX = 0;
+  /** Number of crystal position samples seen since match start. */
+  private crystalSamples = 0;
 
-  /** Minimum negative X the crystal reached (Umbra's furthest push). */
-  private crystalMinX = 0;
+  /** Furthest the crystal was pushed towards the enemy goal (arena units). */
+  private friendlyPush = 0;
+
+  /** Furthest the crystal was pushed towards our goal (arena units). */
+  private enemyPush = 0;
+
+  /** Spawn-cluster team assignment, computed at match start. */
+  private spawnTeams: SpawnTeams | undefined;
+
+  /** Spawn positions of players seen in the CC zone, keyed by entity ID. */
+  private spawnPositions = new Map<string, Point2>();
 
   /** Whether we're in a duty instance (received COMMENCE in non-CC zone). */
   private inDutyInstance = false;
@@ -81,8 +107,8 @@ export default class FFXIVLogHandler extends EventEmitter {
   /** Countdown duration in seconds from the most recent /countdown command. */
   private countdownSeconds: number | undefined;
 
-  /** Winning team index from TEAM_RESULT ActorControl (0 or 1). */
-  private ccWinningTeamIndex: number | undefined;
+  /** data0 of each TEAM_RESULT (0x40000007) ActorControl, in arrival order. */
+  private ccTeamResultOrder: number[] = [];
 
   /** Deferred match end timer (allows TEAM_RESULT to arrive after MATCH_END). */
   private matchEndTimer: ReturnType<typeof setTimeout> | undefined;
@@ -143,8 +169,12 @@ export default class FFXIVLogHandler extends EventEmitter {
     // Type 00: ChatMessage (detects countdown for dynamic pre-pull buffer)
     this.watcher.on('0', (line: ACTLogLine) => this.handleChatMessage(line));
 
-    // Type 270: NpcPosition (tracks Tactical Crystal movement)
-    this.watcher.on('270', (line: ACTLogLine) => this.handleNpcPosition(line));
+    // Type 270: ActorMove / 271: ActorSetPos (tracks Tactical Crystal movement)
+    this.watcher.on('270', (line: ACTLogLine) => this.handleActorMove(line));
+    this.watcher.on('271', (line: ACTLogLine) => this.handleActorMove(line));
+
+    // Type 261: CombatantMemory (position changes for tracked combatants)
+    this.watcher.on('261', (line: ACTLogLine) => this.handleCombatantMemory(line));
 
     // Timeout — force stop if no activity for a long time
     this.watcher.on('timeout', () => {
@@ -255,12 +285,16 @@ export default class FFXIVLogHandler extends EventEmitter {
 
     const entityId = line.field(0);
     const name = line.field(1);
+    const npcNameId = line.fieldInt(7);
+    // posX/posY are at field indices 15/16 (13,14 are empty fields before pos)
+    const posX = line.fieldFloat(15);
+    const posY = line.fieldFloat(16);
 
     // Detect the Tactical Crystal NPC for result tracking.
-    if (name === 'Tactical Crystal') {
+    if (isTacticalCrystal(npcNameId, name)) {
       this.crystalEntityId = entityId;
-      this.crystalLastX = undefined;
       console.info('[FFXIVLogHandler] Tactical Crystal detected:', entityId);
+      this.recordCrystalPosition({ x: posX, y: posY });
       return;
     }
 
@@ -271,15 +305,27 @@ export default class FFXIVLogHandler extends EventEmitter {
     const jobId = parseInt(jobIdHex, 16);
     const level = line.fieldInt(3);
     const worldName = line.field(6);
-    // posX is at field index 15 (indices 13,14 are empty fields before pos)
-    const posX = line.fieldFloat(15);
 
     const combatant = new Combatant(entityId);
     combatant.name = name;
     combatant.jobId = jobId;
     combatant.level = level;
     combatant.worldName = worldName;
-    combatant.teamId = getTeamFromPosition(posX);
+    combatant.spawnX = posX;
+    combatant.spawnY = posY;
+
+    // Remember spawn positions. Before the match starts everyone is confined
+    // to their base, so these split cleanly into two clusters.
+    if (!this.matchStarted) {
+      this.spawnPositions.set(entityId, { x: posX, y: posY });
+    }
+
+    if (this.spawnTeams) {
+      // Late arrival after teams were computed: nearest cluster wins.
+      combatant.teamId =
+        this.spawnTeams.teamById.get(entityId) ??
+        teamForPosition({ x: posX, y: posY }, this.spawnTeams);
+    }
 
     // If there's already an activity, add to it.
     // Otherwise, store for when the match starts.
@@ -297,8 +343,8 @@ export default class FFXIVLogHandler extends EventEmitter {
       '[FFXIVLogHandler] AddCombatant:',
       name,
       `job=0x${jobIdHex}`,
-      `team=${combatant.teamId}`,
-      `pos=(${posX})`,
+      `team=${combatant.teamId ?? '?'}`,
+      `pos=(${posX}, ${posY})`,
     );
   }
 
@@ -349,19 +395,20 @@ export default class FFXIVLogHandler extends EventEmitter {
         this.endCCMatch(matchEndTimestamp, true);
       }, 0);
     } else if (command === ActorControlType.TEAM_RESULT) {
-      // TEAM_RESULT fires twice after MATCH_END (once per team).
-      // The first event's data0 is the winning team index (0 or 1).
+      // 0x40000007 fires twice after MATCH_END (once per team, data0 = 0/1).
+      // In the one real log we have they arrive as 00 then 01, so the order
+      // may just be enumeration rather than "winner first". We record the
+      // order for diagnostics and only use it as a last resort.
       const teamIndex = line.fieldHex(2);
-      if (this.ccWinningTeamIndex === undefined) {
-        this.ccWinningTeamIndex = teamIndex;
-        console.info(
-          '[FFXIVLogHandler] TEAM_RESULT: winning team index =',
-          teamIndex,
-        );
-      }
+      this.ccTeamResultOrder.push(teamIndex);
+      console.info(
+        '[FFXIVLogHandler] TEAM_RESULT event',
+        `data0=${teamIndex}`,
+        `data1=${line.field(3)} data2=${line.field(4)} data3=${line.field(5)}`,
+      );
 
-      // If the deferred match end is pending, fire it now.
-      if (this.matchEndTimer) {
+      // Once both have arrived, fire the deferred match end.
+      if (this.matchEndTimer && this.ccTeamResultOrder.length >= 2) {
         clearTimeout(this.matchEndTimer);
         this.matchEndTimer = undefined;
         this.endCCMatch(line.timestamp, true);
@@ -442,22 +489,63 @@ export default class FFXIVLogHandler extends EventEmitter {
   }
 
   /**
-   * Type 270: NpcPosition
-   * Format: 270|timestamp|entityId|heading|flag1|flag2|posX|posY|posZ|hash
+   * Type 270: ActorMove / Type 271: ActorSetPos
+   * Format: 27x|timestamp|entityId|heading|unk1|unk2|posX|posY|posZ|hash
    *
    * Tracks the Tactical Crystal position to determine match result.
    */
-  private handleNpcPosition(line: ACTLogLine) {
+  private handleActorMove(line: ACTLogLine) {
     if (!this.crystalEntityId) return;
+    if (line.field(0) !== this.crystalEntityId) return;
 
-    const entityId = line.field(0);
-    if (entityId !== this.crystalEntityId) return;
+    this.recordCrystalPosition({
+      x: line.fieldFloat(4),
+      y: line.fieldFloat(5),
+    });
+  }
 
-    const x = line.fieldFloat(4);
-    this.crystalLastX = x;
+  /**
+   * Type 261: CombatantMemory
+   * Format: 261|timestamp|Change|entityId|key|value|key|value|...|hash
+   *
+   * OverlayPlugin emits position deltas here for tracked combatants, which
+   * gives us a second source of crystal movement in case 270 is sparse.
+   */
+  private handleCombatantMemory(line: ACTLogLine) {
+    if (!this.crystalEntityId) return;
+    if (line.field(0) !== 'Change') return;
+    if (line.field(1) !== this.crystalEntityId) return;
 
-    if (x > this.crystalMaxX) this.crystalMaxX = x;
-    if (x < this.crystalMinX) this.crystalMinX = x;
+    let x: number | undefined;
+    let y: number | undefined;
+
+    for (let i = 2; i < line.dataFieldCount; i += 2) {
+      const key = line.field(i);
+      if (key === 'PosX') x = line.fieldFloat(i + 1);
+      else if (key === 'PosY') y = line.fieldFloat(i + 1);
+    }
+
+    if (x === undefined && y === undefined) return;
+
+    this.recordCrystalPosition({
+      x: x ?? this.crystalLast?.x ?? 0,
+      y: y ?? this.crystalLast?.y ?? 0,
+    });
+  }
+
+  /**
+   * Record a crystal position sample and update the push extremes.
+   * Only samples taken after the match has commenced count towards the
+   * result; before that the crystal is parked at the centre anyway.
+   */
+  private recordCrystalPosition(p: Point2) {
+    this.crystalLast = p;
+    if (!this.matchStarted || !this.spawnTeams) return;
+
+    this.crystalSamples++;
+    const progress = crystalProgressAlongLane(p, this.spawnTeams);
+    if (progress > this.friendlyPush) this.friendlyPush = progress;
+    if (-progress > this.enemyPush) this.enemyPush = -progress;
   }
 
   /**
@@ -491,73 +579,63 @@ export default class FFXIVLogHandler extends EventEmitter {
   }
 
   /**
-   * Determine CC match result.
+   * Determine CC match result. Returns the result and how it was derived.
    *
-   * Primary: TEAM_RESULT ActorControl event (data0 = winning team index).
-   *   Astra (positive X spawn) = internal team index 1.
-   *   Umbra (negative X spawn) = internal team index 0.
+   * Crystal push: the crystal's furthest excursion towards each goal is
+   * measured along the lane between the two spawn clusters. The team with the
+   * larger push wins — this matches the game's own time-out rule, and every
+   * completed match in the author's PvpStats history agrees with it.
    *
-   * Fallback: crystal position tracking via type 270 NpcPosition events.
-   *   Crystal at positive X = Astra (positive X team) wins.
-   *   Crystal at negative X = Umbra (negative X team) wins.
-   *   (The crystal advances toward the controlling team's side.)
-   *
-   * Returns true if the player's team won.
+   * TEAM_RESULT ordering is unverified and only used when no crystal samples
+   * were logged (e.g. an IINACT build that doesn't emit ActorMove lines).
    */
-  private determineCCResult(): boolean {
-    const player = LogHandler.activity?.getCombatant(this.playerEntityId ?? '');
-    if (!player?.teamId) {
+  private determineCCResult(): { result: boolean; source: string } {
+    if (!this.spawnTeams) {
       console.warn(
-        '[FFXIVLogHandler] Cannot determine result: player team unknown.',
+        '[FFXIVLogHandler] Cannot determine result: teams unknown.',
         `playerEntityId=${this.playerEntityId}`,
-        `combatantMapSize=${LogHandler.activity?.combatantMap?.size}`,
+        `spawnPositions=${this.spawnPositions.size}`,
       );
-      return false;
+      return { result: false, source: 'unknown' };
     }
 
-    // Player team: teamId 1 = Astra (positive X), teamId 2 = Umbra (negative X)
-    const playerIsAstra = player.teamId === 1;
-
-    // Method 1: TEAM_RESULT (available in ranked/casual, not custom matches)
-    if (this.ccWinningTeamIndex !== undefined) {
-      // Astra = internal team index 1, Umbra = internal team index 0
-      const astraWon = this.ccWinningTeamIndex === 1;
-      const playerWon = astraWon === playerIsAstra;
-
+    // Method 1: crystal push along the lane.
+    if (this.crystalSamples > 0) {
+      const playerWon = this.friendlyPush >= this.enemyPush;
       console.info(
-        '[FFXIVLogHandler] Match result (TEAM_RESULT):',
-        `winningTeamIndex=${this.ccWinningTeamIndex},`,
-        `${astraWon ? 'Astra' : 'Umbra'} wins,`,
-        `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
+        '[FFXIVLogHandler] Match result (crystal push):',
+        `ours=${this.friendlyPush.toFixed(2)}`,
+        `theirs=${this.enemyPush.toFixed(2)}`,
+        `samples=${this.crystalSamples}`,
         `result=${playerWon ? 'WIN' : 'LOSS'}`,
       );
-      return playerWon;
+
+      if (this.ccTeamResultOrder.length > 0) {
+        console.info(
+          '[FFXIVLogHandler] TEAM_RESULT order for this match:',
+          this.ccTeamResultOrder.join(','),
+        );
+      }
+
+      return { result: playerWon, source: 'crystal' };
     }
 
-    // Method 2: Crystal max push fallback (works for all match types)
-    // The team that pushed the crystal furthest from center wins.
-    // crystalMaxX = Astra's furthest push, |crystalMinX| = Umbra's furthest push.
-    if (this.crystalLastX !== undefined) {
-      const astraPush = this.crystalMaxX;
-      const umbraPush = Math.abs(this.crystalMinX);
-      const astraWon = astraPush >= umbraPush;
-      const playerWon = astraWon === playerIsAstra;
-
-      console.info(
-        '[FFXIVLogHandler] Match result (max crystal push):',
-        `Astra push=${astraPush.toFixed(2)}, Umbra push=${umbraPush.toFixed(2)},`,
-        `${astraWon ? 'Astra' : 'Umbra'} wins,`,
-        `player team=${playerIsAstra ? 'Astra' : 'Umbra'},`,
-        `result=${playerWon ? 'WIN' : 'LOSS'}`,
+    // Method 2: TEAM_RESULT ordering heuristic (unverified).
+    if (this.ccTeamResultOrder.length > 0) {
+      console.warn(
+        '[FFXIVLogHandler] No crystal samples; falling back to TEAM_RESULT',
+        'order heuristic, which is unverified:',
+        this.ccTeamResultOrder.join(','),
       );
-      return playerWon;
+      // Without a team-name mapping this can't be resolved to the local
+      // player's team, so record it as unknown rather than guess.
+      return { result: false, source: 'team-result-unresolved' };
     }
 
     console.warn(
-      '[FFXIVLogHandler] Cannot determine result: no TEAM_RESULT and no crystal position.',
-      `playerIsAstra=${playerIsAstra}`,
+      '[FFXIVLogHandler] Cannot determine result: no crystal samples and no TEAM_RESULT.',
     );
-    return false;
+    return { result: false, source: 'unknown' };
   }
 
   /**
@@ -717,15 +795,46 @@ export default class FFXIVLogHandler extends EventEmitter {
       match.playerEntityId = this.playerEntityId;
     }
 
+    // Split players into the two spawn clusters.
+    this.spawnTeams = assignTeamsBySpawn(
+      this.spawnPositions,
+      this.playerEntityId,
+    );
+
+    if (this.spawnTeams) {
+      const t = this.spawnTeams;
+      console.info(
+        '[FFXIVLogHandler] Spawn teams:',
+        `friendly=(${t.friendlyCentroid.x.toFixed(1)}, ${t.friendlyCentroid.y.toFixed(1)})`,
+        `enemy=(${t.enemyCentroid.x.toFixed(1)}, ${t.enemyCentroid.y.toFixed(1)})`,
+        `players=${t.teamById.size}`,
+      );
+    } else {
+      console.warn(
+        '[FFXIVLogHandler] Could not derive teams from spawn positions',
+        `player=${this.playerEntityId}`,
+        `positions=${this.spawnPositions.size}`,
+      );
+    }
+
     // Add any pending combatants collected from AddCombatant events.
     if (this._pendingCombatants) {
       for (const combatant of this._pendingCombatants.values()) {
+        if (this.spawnTeams) {
+          combatant.teamId = this.spawnTeams.teamById.get(combatant.entityId);
+        }
         match.addCombatant(combatant);
       }
     }
 
-    await LogHandler.startActivity(match);
+    // Mark started before awaiting so crystal samples in the same log chunk
+    // as COMMENCE are counted (line processing is synchronous per chunk).
     this.matchStarted = true;
+    this.friendlyPush = 0;
+    this.enemyPush = 0;
+    this.crystalSamples = 0;
+
+    await LogHandler.startActivity(match);
     this.emit('activity-start', match);
   }
 
@@ -738,14 +847,17 @@ export default class FFXIVLogHandler extends EventEmitter {
       return;
     }
 
-    // Determine match result from crystal position.
-    const result = this.determineCCResult();
+    const { result, source } = this.determineCCResult();
     LogHandler.activity.end(timestamp, result);
+    if (LogHandler.activity instanceof CCMatch) {
+      LogHandler.activity.resultSource = source;
+    }
 
     const metadata = LogHandler.activity.getMetadata();
     console.info(
       '[FFXIVLogHandler] Match ended.',
       `Duration: ${metadata.duration.toFixed(1)}s`,
+      `Result: ${result ? 'WIN' : 'LOSS'} (${source})`,
       `Deaths: ${metadata.deaths?.length ?? 0}`,
       `Combatants: ${metadata.combatants.length}`,
     );
@@ -768,10 +880,13 @@ export default class FFXIVLogHandler extends EventEmitter {
     this.matchStarted = false;
     this._pendingCombatants = undefined;
     this.crystalEntityId = undefined;
-    this.crystalLastX = undefined;
-    this.crystalMaxX = 0;
-    this.crystalMinX = 0;
-    this.ccWinningTeamIndex = undefined;
+    this.crystalLast = undefined;
+    this.crystalSamples = 0;
+    this.friendlyPush = 0;
+    this.enemyPush = 0;
+    this.spawnTeams = undefined;
+    this.spawnPositions = new Map();
+    this.ccTeamResultOrder = [];
     if (this.matchEndTimer) {
       clearTimeout(this.matchEndTimer);
       this.matchEndTimer = undefined;

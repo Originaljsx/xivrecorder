@@ -64,12 +64,27 @@ For more details, see the [IINACT installation guide](https://www.iinact.com/ins
 
 If you run into IINACT issues, report them at: https://github.com/marzent/IINACT
 
+### 2b. (Optional, recommended) Install PvpStats for CC results & scoreboards
+
+The IINACT log has no reliable win/loss signal for Crystalline Conflict. If you also run the
+[PvpStats](https://github.com/wrath16/PvpStats) Dalamud plugin, XIV Recorder imports the
+official result and the full end-of-match scoreboard into every CC recording.
+
+1. Run `/xlplugins` in the FFXIV chat, search for **PvpStats** and install it. It is on the
+   official Dalamud plugin list, so no extra repository is needed.
+2. Keep it enabled while you play. PvpStats saves every CC match to its own database on your PC.
+3. That's it. XIV Recorder finds the PvpStats database automatically and links each recording
+   to its match a few seconds after the video is saved. Nothing to configure, no extra plugin
+   from XIV Recorder itself. You can turn this off in **Settings → Import PvpStats results**.
+
 ### 3. Configure XIV Recorder
 
 1. Launch XIV Recorder and click the **Settings** button.
 2. Create a folder on your PC to store recordings.
 3. Set the **Storage Path** to the folder you created.
-4. Set the **IINACT Log Path** to your IINACT log directory (default: `Documents\IINACT`).
+4. Check the **IINACT Log Path**. XIV Recorder detects your IINACT log directory on first launch
+   (including a OneDrive-redirected Documents folder) and warns you if the configured folder has
+   no `Network_*.log` files but IINACT is writing somewhere else.
 5. Enable the content types you want to record (Crystalline Conflict, Raids).
 6. Click the **Scene** button to configure OBS recording settings:
    - Select your desired output resolution.
@@ -80,11 +95,20 @@ If you run into IINACT issues, report them at: https://github.com/marzent/IINACT
 
 With FFXIV running and XIV Recorder configured, you can test recording by clicking the test icon. This runs a short test of the recording function.
 
+### 5. Viewing a CC recording's stats
+
+Select a Crystalline Conflict recording and open the side panel (arrow button at the top right of
+the video page). If the match was linked to PvpStats you'll see the arena, match type, win/loss,
+the Astra/Umbra crystal progress, your rank change (ranked only) and both teams' scoreboards:
+job, kills, deaths, assists, damage dealt, damage taken, healing and time on the crystal. Your
+own row is highlighted and your team is listed first.
+
 ## Supported Content
 
 | Content Type | Support |
 |---|---|
 | Crystalline Conflict (Ranked/Casual/Custom) | Yes |
+| CC scoreboard via PvpStats | Yes (optional plugin) |
 | Savage Raids | Yes |
 | Ultimate Raids | Yes |
 | Normal Raids | No |
@@ -104,7 +128,51 @@ With FFXIV running and XIV Recorder configured, you can test recording by clicki
 ### Crystalline Conflict
 - Detects zone entry into a CC arena
 - Records from match start (ActorControl COMMENCE) through match end
-- Tracks player teams, deaths, and match result (win/loss via Tactical Crystal position)
+- Teams are derived from spawn positions: everyone in your base at zone-in is your team
+- Match result, in order of preference:
+  1. **PvpStats link** (recommended, see below): the official result and teams straight from
+     the game's own end-of-match data, as captured by PvpStats.
+  2. **Tactical Crystal push**: without PvpStats, the crystal's position is tracked along the
+     lane between the two spawns and whichever team pushed it furthest towards the enemy goal
+     wins. This is the game's own time-out rule. It is right on every decisive match, but on a
+     dead-even game (progress within about 0.1) it can go either way, and a true tie decided by
+     tiebreaker can't be resolved from the log at all. When PvpStats data arrives it overrides
+     this guess.
+  3. If neither is available the recording is tagged as a loss with `resultSource: unknown` in
+     its metadata.
+- Every recording's metadata records which method produced its result (`resultSource`:
+  `pvpstats`, `crystal` or `unknown`).
+
+### PvpStats integration
+
+[PvpStats](https://github.com/wrath16/PvpStats) is a Dalamud plugin that records every CC match
+(result, teams, per-player stats) into a local LiteDB database at
+`%APPDATA%\XIVLauncher\pluginConfigs\PvpStats\data.db`. XIV Recorder reads that database, so
+no in-game plugin other than IINACT and PvpStats is required.
+
+How the link works:
+
+1. **Export.** XIV Recorder ships a small self-contained helper, `pvpstats-export.exe`
+   (source in `tools/pvpstats-export`, .NET 8 + LiteDB). It copies `data.db` and its write-ahead
+   log to a temp folder, so PvpStats' own lock is never touched and the newest matches are
+   included, then exports matches newer than a given time as JSON.
+2. **Correlate.** Each CC recording stores the match's COMMENCE time and territory ID. A
+   recording is linked to the PvpStats match whose start time is within two minutes on the same
+   arena; the closest one wins. Both sides use the same in-game commence event, so in practice
+   they agree to within a second.
+3. **Apply.** The recording's metadata gets a `pvpStats` block with the arena, match type,
+   winner, your team, overtime flag, duration, rank before/after and both teams' player stats.
+   The win/loss flag is set from it (`resultSource: pvpstats`), and the recorder's relative
+   team numbers are relabelled to the real Astra/Umbra teams by player name.
+4. **Timing.** The link runs right after a CC video is saved and retries at 5 s, 20 s, 60 s and
+   3 min in case PvpStats hasn't written the match yet. Every start-up also runs a backfill over
+   any CC recordings that don't have PvpStats data yet, so older videos get linked when you
+   install this version or PvpStats later.
+5. **Display.** The side panel on the video page renders the `pvpStats` block as a scoreboard.
+
+The link is on by default and can be disabled in Settings (**Import PvpStats results**). If
+PvpStats isn't installed or its database isn't found, XIV Recorder logs why and falls back to
+the crystal-push result.
 
 ### Savage & Ultimate Raids
 - Detects duty instance entry via ActorControl COMMENCE in Savage/Ultimate zones
