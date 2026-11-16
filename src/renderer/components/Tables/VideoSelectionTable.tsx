@@ -15,7 +15,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import { povDiskFirstNameSort } from '../../rendererutils';
+import { povNameSort } from '../../rendererutils';
 import { Button } from '../Button/Button';
 import { getLocalePhrase } from 'localisation/translations';
 import { ScrollArea } from '../ScrollArea/ScrollArea';
@@ -37,7 +37,6 @@ const VideoSelectionTable = (props: IProps) => {
   const {
     videoFilterTags,
     dateRangeFilter,
-    storageFilter,
     preferredViewpoint,
   } = appState;
 
@@ -79,7 +78,7 @@ const VideoSelectionTable = (props: IProps) => {
       }
 
       const video = row.original;
-      const povs = [video, ...video.multiPov].sort(povDiskFirstNameSort);
+      const povs = [video, ...video.multiPov].sort(povNameSort);
 
       let toSelect: RendererVideo | undefined;
 
@@ -175,7 +174,7 @@ const VideoSelectionTable = (props: IProps) => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleMouseDown);
     };
-  }, [table, onRowClick, videoFilterTags, dateRangeFilter, storageFilter]);
+  }, [table, onRowClick, videoFilterTags, dateRangeFilter]);
 
   /**
    * Render an individual header.

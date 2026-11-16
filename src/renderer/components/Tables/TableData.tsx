@@ -50,8 +50,6 @@ const useTable = (
     language,
     videoFilterTags,
     dateRangeFilter,
-    storageFilter,
-    cloudStatus,
   } = appState;
 
   /**
@@ -72,7 +70,7 @@ const useTable = (
    */
   useEffect(() => {
     setRowSelection({});
-  }, [category, videoFilterTags, dateRangeFilter, storageFilter]);
+  }, [category, videoFilterTags, dateRangeFilter]);
 
   /**
    * The Crystalline Conflict table columns, the data access, sorting functions
@@ -87,7 +85,7 @@ const useTable = (
         sortingFn: (a, b) => detailSort(a, b),
         header: DetailsHeader,
         cell: (ctx) =>
-          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+          populateDetailsCell(ctx, language, setVideoState),
       },
       {
         id: 'Map',
@@ -124,7 +122,7 @@ const useTable = (
         sortingFn: viewPointCountSort,
       },
     ],
-    [language, cloudStatus, setVideoState],
+    [language, setVideoState],
   );
 
   /**
@@ -140,7 +138,7 @@ const useTable = (
         sortingFn: (a, b) => detailSort(a, b),
         header: DetailsHeader,
         cell: (ctx) =>
-          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+          populateDetailsCell(ctx, language, setVideoState),
       },
       {
         id: 'Type',
@@ -191,7 +189,7 @@ const useTable = (
         sortingFn: (a, b) => detailSort(a, b),
         header: DetailsHeader,
         cell: (ctx) =>
-          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+          populateDetailsCell(ctx, language, setVideoState),
       },
       {
         id: 'Type',

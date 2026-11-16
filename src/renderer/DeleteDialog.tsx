@@ -24,8 +24,6 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import CloudIcon from '@mui/icons-material/Cloud';
-import SaveIcon from '@mui/icons-material/Save';
 import { Phrase } from 'localisation/phrases';
 
 type DeleteDialogProps = {
@@ -82,19 +80,6 @@ const DeleteDialog = ({
                 onChange: row.getToggleSelectedHandler(),
               }}
             />
-          </div>
-        ),
-      },
-      {
-        id: 'Storage',
-        accessorKey: 'cloud',
-        cell: (info) => (
-          <div className="flex justify-center items-center">
-            {info.getValue() ? (
-              <CloudIcon sx={{ height: 18, width: 18 }} />
-            ) : (
-              <SaveIcon sx={{ height: 18, width: 18 }} />
-            )}
           </div>
         ),
       },
@@ -170,8 +155,8 @@ const DeleteDialog = ({
     setVideoState((prev) => {
       return [...prev].filter((rv) => {
         return !toDelete.find(
-          // A video is uniquely identified by its name and storage type.
-          (v) => v.videoName === rv.videoName && v.cloud === rv.cloud,
+          // A video is uniquely identified by its name.
+          (v) => v.videoName === rv.videoName,
         );
       });
     });

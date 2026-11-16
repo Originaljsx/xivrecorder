@@ -41,7 +41,7 @@ import {
   FileSortDirection,
 } from './types';
 import ConfigService from '../config/ConfigService';
-import { obsResolutions } from './constants';
+import { defaultAudioTrack } from './constants';
 import {
   getObsAudioConfig,
   getObsVideoConfig,
@@ -301,11 +301,27 @@ export default class Recorder extends EventEmitter {
 
     ipcMain.handle(
       'createAudioSource',
-      (event, id: string, type: AudioSourceType) => {
+      (_event, id: string, type: AudioSourceType) => {
         console.info('[Manager] Creating audio source', id, 'of type', type);
         const name = noobs.CreateSource(id, type);
         console.info('[Manager] Created audio source', name);
+        this.configureAudioSourceTracks(name, defaultAudioTrack);
         noobs.AddSourceToScene(name);
+
+        // Track the source so it gets cleaned up properly later, otherwise
+        // it could be left behind and duplicated on the next reconfigure.
+        this.audioSources.push({
+          id: name,
+          type,
+          volume: 1,
+          tracks: defaultAudioTrack,
+        });
+
+        if (type === AudioSourceType.INPUT && this.inputDevicesMuted) {
+          // Push to talk is active, so a newly added mic must start muted too.
+          noobs.SetMuteAudioInputs(true);
+        }
+
         return name;
       },
     );
@@ -317,7 +333,12 @@ export default class Recorder extends EventEmitter {
 
     ipcMain.on('deleteAudioSource', (_event, id: string) => {
       console.info('[Manager] Deleting audio source', id);
+      noobs.RemoveSourceFromScene(id);
       noobs.DeleteSource(id);
+
+      this.audioSources = this.audioSources.filter(
+        (source) => source.id !== id,
+      );
     });
 
     ipcMain.on('setAudioSourceDevice', (_event, id: string, value: string) => {
@@ -327,7 +348,8 @@ export default class Recorder extends EventEmitter {
         'to',
         value,
       );
-      const settings = noobs.GetSourceSettings(id);
+      const settings = Recorder.getAudioSourceSettings(id);
+      if (!settings) return;
       settings['device_id'] = value;
       noobs.SetSourceSettings(id, settings);
     });
@@ -339,7 +361,8 @@ export default class Recorder extends EventEmitter {
         'to',
         value,
       );
-      const settings = noobs.GetSourceSettings(id);
+      const settings = Recorder.getAudioSourceSettings(id);
+      if (!settings) return;
       settings['window'] = value;
       settings['priority'] = 2; // Executable matching
       noobs.SetSourceSettings(id, settings);
@@ -353,6 +376,10 @@ export default class Recorder extends EventEmitter {
         value,
       );
       noobs.SetSourceVolume(id, value);
+    });
+
+    ipcMain.on('setAudioSourceTracks', (_event, id: string, tracks: number) => {
+      this.configureAudioSourceTracks(id, tracks);
     });
 
     ipcMain.on('setForceMono', (_event, enabled: boolean) => {
@@ -577,8 +604,10 @@ export default class Recorder extends EventEmitter {
         break;
 
       case ESupportedEncoders.AMD_H264:
+      case ESupportedEncoders.AMD_H265:
       case ESupportedEncoders.AMD_AV1:
       case ESupportedEncoders.NVENC_H264:
+      case ESupportedEncoders.NVENC_H265:
       case ESupportedEncoders.NVENC_AV1:
       case ESupportedEncoders.QSV_H264:
       case ESupportedEncoders.QSV_AV1:
@@ -709,12 +738,47 @@ export default class Recorder extends EventEmitter {
   }
 
   /**
+   * Get the settings of an audio source, or undefined if it no longer exists
+   * (e.g. the sources were removed because FFXIV closed while the audio
+   * settings were open).
+   */
+  private static getAudioSourceSettings(id: string) {
+    try {
+      const settings = noobs.GetSourceSettings(id);
+      if (settings) return settings;
+    } catch (error) {
+      console.warn('[Recorder] Failed to get audio source settings', id, error);
+    }
+
+    console.warn('[Recorder] Audio source not found', id);
+    return undefined;
+  }
+
+  /**
+   * Route an audio source to a set of the six OBS audio tracks.
+   */
+  private configureAudioSourceTracks(sourceId: string, tracks: number) {
+    console.info('[Recorder] Set audio tracks for source', {
+      sourceId,
+      tracks,
+    });
+
+    noobs.SetSourceAudioTracks(sourceId, tracks);
+  }
+
+  /**
    * Add the configured audio sources to the OBS scene. This is public
    * so it can be called externally when FFXIV is opened.
    */
   public configureAudioSources(config: ObsAudioConfig) {
     this.removeAudioSources();
     console.info('[Recorder] Configure audio sources');
+
+    // A pending push to talk release must not mute the new sources.
+    if (this.pttReleaseDelayTimer) {
+      clearTimeout(this.pttReleaseDelayTimer);
+      this.pttReleaseDelayTimer = undefined;
+    }
 
     // Can't release all the listeners here as we now use
     // uIOhook for triggering manual recording too.
@@ -728,13 +792,19 @@ export default class Recorder extends EventEmitter {
 
     config.audioSources.forEach((src) => {
       console.info('[Recorder] Create audio source', src.id);
+
+      // OBS may have renamed the source if there was a naming conflict,
+      // log that for posterity. Use that name going forward even if it
+      // doesn't match what we asked for.
       const name = noobs.CreateSource(src.id, src.type);
+      console.info('[Recorder] Created audio source', name);
       const settings = noobs.GetSourceSettings(name);
 
       if (src.type === AudioSourceType.PROCESS && src.device) {
         settings['window'] = src.device;
         settings['priority'] = 2; // Executable matching
         noobs.SetSourceSettings(name, settings);
+        noobs.SetSourceVolume(name, src.volume);
       } else if (src.type !== AudioSourceType.PROCESS) {
         const properties = noobs.GetSourceProperties(name);
         const available = properties.find((prop: any) => prop.name === 'device_id');
@@ -757,6 +827,10 @@ export default class Recorder extends EventEmitter {
               src,
               available.items,
             );
+
+            // Don't leave the half configured source behind, it would cause
+            // a naming conflict on the next reconfigure.
+            noobs.DeleteSource(name);
             return;
           }
 
@@ -781,25 +855,16 @@ export default class Recorder extends EventEmitter {
         console.warn('[Recorder] Unable to configure audio source', src);
       }
 
+      this.configureAudioSourceTracks(name, src.tracks ?? defaultAudioTrack);
       noobs.AddSourceToScene(name);
-      this.audioSources.push(src);
+      this.audioSources.push({ ...src, id: name });
     });
 
     const mics = this.audioSources.filter(
       (src) => src.type === AudioSourceType.INPUT,
     );
 
-    if (mics.length !== 0 && config.pushToTalk) {
-      this.obsMicState = MicStatus.MUTED;
-      this.emit('state-change');
-    } else if (mics.length !== 0) {
-      this.obsMicState = MicStatus.LISTENING;
-      this.emit('state-change');
-    }
-
     if (config.pushToTalk) {
-      this.inputDevicesMuted = true;
-
       this.pushToTalkKeyListener = (e: UiohookKeyboardEvent) =>
         this.pushToTalkHandler(e, config);
 
@@ -810,6 +875,17 @@ export default class Recorder extends EventEmitter {
       uIOhook.on('keyup', this.pushToTalkKeyListener);
       uIOhook.on('mousedown', this.pushToTalkMouseListener);
       uIOhook.on('mouseup', this.pushToTalkMouseListener);
+    }
+
+    // Actually apply the push to talk mute to the new sources now, rather than
+    // waiting for the first key press, so the mic is never live by mistake.
+    if (mics.length !== 0 && config.pushToTalk) {
+      this.muteInputDevices();
+    } else if (mics.length !== 0) {
+      // Freshly created input sources are always unmuted.
+      this.inputDevicesMuted = false;
+      this.obsMicState = MicStatus.LISTENING;
+      this.emit('state-change');
     }
   }
 
@@ -830,7 +906,7 @@ export default class Recorder extends EventEmitter {
     });
 
     this.audioSources = [];
-    this.inputDevicesMuted = true;
+    this.inputDevicesMuted = false;
   }
 
   /**
@@ -1097,7 +1173,10 @@ export default class Recorder extends EventEmitter {
     console.info('[Recorder] Noobs path:', noobsPath);
     console.info('[Recorder] Log path:', logPath);
     noobs.Init(noobsPath, logPath, cb);
-    noobs.SetBuffering(true);
+
+    // Keep a rolling 60 second (max 1GB) buffer in memory so recordings can
+    // include the moments before an activity was detected.
+    noobs.SetBuffering(true, 60, 1024);
 
     const hwnd = getNativeWindowHandle();
     noobs.InitPreview(hwnd);

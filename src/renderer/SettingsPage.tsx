@@ -3,7 +3,6 @@ import { AppState, RecStatus } from 'main/types';
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase } from 'localisation/translations';
 import GeneralSettings from './GeneralSettings';
-import CloudSettings from './CloudSettings';
 import {
   Tabs,
   TabsList,
@@ -45,9 +44,6 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
           </TabsTrigger>
           <TabsTrigger value="game">
             {getLocalePhrase(appState.language, Phrase.SettingsPageGameHeader)}
-          </TabsTrigger>
-          <TabsTrigger value="pro">
-            {getLocalePhrase(appState.language, Phrase.SettingsPageProHeader)}
           </TabsTrigger>
         </TabsList>
         <ScrollArea
@@ -126,24 +122,6 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                 </CategoryHeading>
                 <Separator className="mt-2 mb-4" />
                 <ManualSettings
-                  appState={appState}
-                  config={config}
-                  setConfig={setConfig}
-                />
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="pro">
-            <div className="p-4 flex flex-col gap-y-8">
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.CloudSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <CloudSettings
                   appState={appState}
                   config={config}
                   setConfig={setConfig}

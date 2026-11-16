@@ -3,8 +3,6 @@ import {
   ObsVideoConfig,
   ObsAudioConfig,
   ObsOverlayConfig,
-  Metadata,
-  CloudConfig,
   AudioSource,
 } from 'main/types';
 import path from 'path';
@@ -67,26 +65,6 @@ const allowRecordCategory = (cfg: ConfigService, category: VideoCategory) => {
 
   console.info('[configUtils] Unrecognised category', category);
   return false;
-};
-
-const shouldUpload = (cfg: ConfigService, metadata: Metadata) => {
-  const { category } = metadata;
-
-  const upload = cfg.get<boolean>('cloudUpload');
-
-  if (!upload) {
-    console.info('[configUtils] Cloud upload is disabled');
-    return false;
-  }
-
-  if (category === VideoCategory.Clips) {
-    const uploadClips = cfg.get<boolean>('cloudUploadClips');
-    console.info('[configUtils] Upload clip?', uploadClips);
-    return uploadClips;
-  }
-
-  console.info('[configUtils] Good to upload:', category);
-  return true;
 };
 
 const getBaseConfig = (cfg: ConfigService): BaseConfig => {
@@ -165,18 +143,6 @@ const getOverlayConfig = (cfg: ConfigService): ObsOverlayConfig => {
     chatOverlayYPosition: cfg.get<number>('chatOverlayYPosition'),
     chatOverlayCropX: cfg.get<number>('chatOverlayCropX'),
     chatOverlayCropY: cfg.get<number>('chatOverlayCropY'),
-  };
-};
-
-const getCloudConfig = (): CloudConfig => {
-  const cfg = ConfigService.getInstance();
-
-  return {
-    cloudStorage: cfg.get<boolean>('cloudStorage'),
-    cloudUpload: cfg.get<boolean>('cloudUpload'),
-    cloudAccountName: cfg.get<string>('cloudAccountName'),
-    cloudAccountPassword: cfg.get<string>('cloudAccountPassword'),
-    cloudGuildName: cfg.get<string>('cloudGuildName'),
   };
 };
 
@@ -282,12 +248,10 @@ const validateBaseConfig = async (config: BaseConfig) => {
 
 export {
   allowRecordCategory,
-  shouldUpload,
   getBaseConfig,
   getObsVideoConfig,
   getObsAudioConfig,
   getOverlayConfig,
-  getCloudConfig,
   validateBaseConfig,
   getLocaleError,
 };

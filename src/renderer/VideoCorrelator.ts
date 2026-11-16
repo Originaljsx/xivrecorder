@@ -18,11 +18,7 @@ export default class VideoCorrelator {
 
     const correlated: RendererVideo[] = [];
 
-    const disk = raw.filter((video) => !video.cloud);
-    disk.forEach((rv) => VideoCorrelator.correlateVideo(rv, correlated));
-
-    const cloud = raw.filter((video) => video.cloud);
-    cloud.forEach((rv) => VideoCorrelator.correlateVideo(rv, correlated));
+    raw.forEach((rv) => VideoCorrelator.correlateVideo(rv, correlated));
 
     correlated.sort(VideoCorrelator.reverseChronologicalVideoSort);
     return correlated;

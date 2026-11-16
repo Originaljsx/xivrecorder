@@ -8,7 +8,7 @@ import {
   getJobRoleColor,
   getJobAbbreviation,
   isCCUtil,
-  povDiskFirstNameSort,
+  povNameSort,
 } from '../../rendererutils';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
@@ -24,7 +24,7 @@ export default function ViewpointSelection(props: IProps) {
   const { video, appState, setAppState, persistentProgress } = props;
   const { selectedVideos, multiPlayerMode } = appState;
 
-  const povs = [video, ...video.multiPov].sort(povDiskFirstNameSort);
+  const povs = [video, ...video.multiPov].sort(povNameSort);
   const { player, combatants } = povs[0];
 
   const isCC = isCCUtil(povs[0]);
@@ -33,8 +33,7 @@ export default function ViewpointSelection(props: IProps) {
     const name = combatant._name;
     const matches = povs.filter((p) => p.player?._name === name);
 
-    let cloudVideo: RendererVideo | null = null;
-    let diskVideo: RendererVideo | null = null;
+    let povVideo: RendererVideo | null = null;
 
     let jobId: number | undefined;
     let currentlySelected = false;
@@ -48,11 +47,7 @@ export default function ViewpointSelection(props: IProps) {
     }
 
     matches.forEach((rv: RendererVideo) => {
-      if (rv.cloud) {
-        cloudVideo = rv;
-      } else {
-        diskVideo = rv;
-      }
+      povVideo = rv;
 
       if (!currentlySelected) {
         // We haven't identified if this players point of view is selected
@@ -75,16 +70,7 @@ export default function ViewpointSelection(props: IProps) {
         stopPropagation(event);
       }
 
-      let selection: RendererVideo | undefined;
-
-      // When a user clicks on the raid frame selection, prioritize
-      // a disk video if it's available. Disk videos are slightly
-      // more responsive and can be clipped.
-      if (diskVideo) {
-        selection = diskVideo;
-      } else if (cloudVideo) {
-        selection = cloudVideo;
-      }
+      const selection: RendererVideo | null = povVideo;
 
       if (!selection) {
         return;
@@ -144,7 +130,7 @@ export default function ViewpointSelection(props: IProps) {
 
     const classColor = jobId !== undefined ? getJobRoleColor(jobId) : 'gray';
 
-    const cursor = cloudVideo || diskVideo ? 'cursor-pointer' : '';
+    const cursor = povVideo ? 'cursor-pointer' : '';
     const selected = currentlySelected
       ? 'border-2 border-[#bb4420] rounded-sm'
       : '';

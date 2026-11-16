@@ -65,6 +65,33 @@ describe('IINACTLogWatcher', () => {
     expect(received[0]).toContain('New Zone');
   });
 
+  it('waits for a partially written line to complete', async () => {
+    const logFile = path.join(tmpDir, 'Network_30009_20260306.log');
+    await fs.promises.writeFile(logFile, '');
+    await watcher.watch();
+
+    const received: string[] = [];
+    watcher.on('line', (line) => {
+      received.push(line.raw);
+    });
+
+    // IINACT has flushed only the first half of a line.
+    await fs.promises.appendFile(
+      logFile,
+      '01|2026-03-06T10:00:00.0000000-08:00|40A|Cloud',
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(received.length).toBe(0);
+
+    // The rest of the line arrives.
+    await fs.promises.appendFile(logFile, ' Nine|abc123\n');
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    expect(received.length).toBe(1);
+    expect(received[0]).toContain('Cloud Nine|abc123');
+  });
+
   it('handles empty directory gracefully', async () => {
     await watcher.watch();
 

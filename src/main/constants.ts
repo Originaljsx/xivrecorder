@@ -103,8 +103,50 @@ export const ffxivJobs: Record<
 };
 
 /**
- * OBS resolution options. Reused from wow-recorder as-is since
- * these are not game-specific.
+ * The XIV Recorder project page: help, bug reports and releases.
+ */
+export const projectUrl = 'https://github.com/Originaljsx/xivrecorder';
+
+/**
+ * The FFXIV game executable. Used to capture the game window and to capture
+ * game audio only (per-application audio capture).
+ */
+export const ffxivExecutable = 'ffxiv_dx11.exe';
+
+/**
+ * OBS window identifier string for the FFXIV game, used for per-application
+ * audio capture. The format is "title:class:executable"; with executable
+ * priority matching only the executable part matters, so this works even
+ * before the game has been launched.
+ */
+export const ffxivAudioWindow = `FINAL FANTASY XIV:FFXIVGAME:${ffxivExecutable}`;
+
+/**
+ * We record exactly six audio tracks. They are represented here as bit flags,
+ * as used by OBS for a source's audio mixers. Track 1 is the track played back
+ * in the app and by most video players, so it should normally contain the
+ * full mix. The other tracks are useful for editing, e.g. putting the game
+ * audio and your voice on separate tracks.
+ */
+export const audioTrack1 = 1 << 0;
+export const audioTrack2 = 1 << 1;
+export const audioTrack3 = 1 << 2;
+export const audioTrack4 = 1 << 3;
+export const audioTrack5 = 1 << 4;
+export const audioTrack6 = 1 << 5;
+export const defaultAudioTrack = audioTrack1;
+
+export const obsAudioTracks = [
+  audioTrack1,
+  audioTrack2,
+  audioTrack3,
+  audioTrack4,
+  audioTrack5,
+  audioTrack6,
+];
+
+/**
+ * OBS resolution options.
  */
 export const obsResolutions = [
   '1024x768',

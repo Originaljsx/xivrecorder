@@ -1,7 +1,5 @@
 /**
- * Polls for the ffxiv_dx11.exe process.
- *
- * Uses `tasklist` command instead of wow-recorder's rust-ps.exe binary.
+ * Polls for the ffxiv_dx11.exe process using the Windows `tasklist` command.
  */
 import EventEmitter from 'events';
 import { exec } from 'child_process';

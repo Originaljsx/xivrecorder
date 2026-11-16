@@ -1,4 +1,6 @@
+import { Phrase } from 'localisation/phrases';
 import { AudioSource, AudioSourceType } from 'main/types';
+import { defaultAudioTrack } from 'main/constants';
 
 export type ConfigurationSchema = {
   storagePath: string;
@@ -38,12 +40,6 @@ export type ConfigurationSchema = {
   pushToTalkModifiers: string;
   pushToTalkReleaseDelay: number;
   obsAudioSuppression: boolean;
-  cloudStorage: boolean;
-  cloudUpload: boolean;
-  cloudUploadClips: boolean;
-  cloudAccountName: string;
-  cloudAccountPassword: string;
-  cloudGuildName: string;
   language: string;
   hideEmptyCategories: boolean;
   hardwareAcceleration: boolean;
@@ -55,8 +51,6 @@ export type ConfigurationSchema = {
   manualRecordHotKey: number;
   manualRecordHotKeyModifiers: string;
   manualRecordSoundAlert: boolean;
-  manualRecordUpload: boolean;
-  chatUserNameAgreed: string;
   firstTimeSetup: boolean;
 };
 
@@ -67,17 +61,17 @@ export type ConfigurationSchemaKey = keyof ConfigurationSchema;
  */
 export const configSchema: Record<string, any> = {
   storagePath: {
-    description: 'Path to store recorded videos',
+    description: Phrase.StoragePathDescription,
     type: 'string',
     default: '',
   },
   separateBufferPath: {
-    description: 'Use a separate path for OBS buffer files',
+    description: Phrase.SeparateBufferPathDescription,
     type: 'boolean',
     default: false,
   },
   bufferStoragePath: {
-    description: 'Path for OBS buffer files',
+    description: Phrase.BufferStoragePathDescription,
     type: 'string',
     default: '',
   },
@@ -87,20 +81,20 @@ export const configSchema: Record<string, any> = {
     default: '',
   },
   maxStorage: {
-    description: 'Maximum storage in GB',
+    description: Phrase.MaxStorageDescription,
     type: 'integer',
     default: 50,
     minimum: 0,
   },
   monitorIndex: {
-    description: 'Monitor index for capture',
+    description: Phrase.MonitorIndexDescription,
     type: 'integer',
     default: 0,
     minimum: 1,
     maximum: 4,
   },
   selectedCategory: {
-    description: 'Currently selected video category',
+    description: Phrase.SelectedCategoryDescription,
     type: 'integer',
     default: 1,
   },
@@ -114,48 +108,49 @@ export const configSchema: Record<string, any> = {
         device: 'default',
         volume: 1,
         type: AudioSourceType.OUTPUT,
+        tracks: defaultAudioTrack,
       },
     ],
   },
   startUp: {
-    description: 'Start on Windows login',
+    description: Phrase.StartUpDescription,
     type: 'boolean',
     default: false,
   },
   startMinimized: {
-    description: 'Start minimized to tray',
+    description: Phrase.StartMinimizedDescription,
     type: 'boolean',
     default: false,
   },
   obsOutputResolution: {
-    description: 'OBS output resolution',
+    description: Phrase.ObsOutputResolutionDescription,
     type: 'string',
     default: '1920x1080',
   },
   obsFPS: {
-    description: 'OBS frames per second',
+    description: Phrase.ObsFPSDescription,
     type: 'integer',
     default: 60,
     minimum: 15,
     maximum: 120,
   },
   obsForceMono: {
-    description: 'Force mono audio output',
+    description: Phrase.ObsForceMonoDescription,
     type: 'boolean',
     default: false,
   },
   obsQuality: {
-    description: 'OBS recording quality (CRF value)',
+    description: Phrase.ObsQualityDescription,
     type: 'string',
     default: 'High',
   },
   obsCaptureMode: {
-    description: 'OBS capture mode',
+    description: Phrase.ObsCaptureModeDescription,
     type: 'string',
     default: 'game_capture',
   },
   obsRecEncoder: {
-    description: 'OBS recording encoder',
+    description: Phrase.ObsRecEncoderDescription,
     type: 'string',
     default: 'obs_x264',
   },
@@ -165,7 +160,7 @@ export const configSchema: Record<string, any> = {
     default: true,
   },
   recordRaids: {
-    description: 'Record raid and trial boss pulls',
+    description: Phrase.RecordRaidsDescription,
     type: 'boolean',
     default: true,
   },
@@ -176,167 +171,137 @@ export const configSchema: Record<string, any> = {
     default: true,
   },
   captureCursor: {
-    description: 'Capture mouse cursor in recordings',
+    description: Phrase.CaptureCursorDescription,
     type: 'boolean',
     default: false,
   },
   minimizeOnQuit: {
-    description: 'Minimize to tray on close',
+    description: Phrase.MinimizeOnQuitDescription,
     type: 'boolean',
     default: false,
   },
   minimizeToTray: {
-    description: 'Minimize to system tray',
+    description: Phrase.MinimizeToTrayDescription,
     type: 'boolean',
     default: false,
   },
   chatOverlayEnabled: {
-    description: 'Enable chat overlay on recordings',
+    description: Phrase.ChatOverlayEnabledDescription,
     type: 'boolean',
     default: false,
   },
   chatOverlayOwnImage: {
-    description: 'Use custom image for chat overlay',
+    description: Phrase.ChatOverlayOwnImageDescription,
     type: 'boolean',
     default: false,
   },
   chatOverlayOwnImagePath: {
-    description: 'Path to custom chat overlay image',
+    description: Phrase.ChatOverlayOwnImagePathDescription,
     type: 'string',
     default: '',
   },
   chatOverlayScale: {
-    description: 'Chat overlay scale',
+    description: Phrase.ChatOverlayScaleDescription,
     type: 'number',
     default: 1,
   },
   chatOverlayXPosition: {
-    description: 'Chat overlay X position',
+    description: Phrase.ChatOverlayXPositionDescription,
     type: 'number',
     default: 0,
   },
   chatOverlayYPosition: {
-    description: 'Chat overlay Y position',
+    description: Phrase.ChatOverlayYPositionDescription,
     type: 'number',
     default: 0,
   },
   chatOverlayCropX: {
-    description: 'Chat overlay X crop',
+    description: Phrase.ChatOverlayCropXDescription,
     type: 'number',
     default: 0,
   },
   chatOverlayCropY: {
-    description: 'Chat overlay Y crop',
+    description: Phrase.ChatOverlayCropYDescription,
     type: 'number',
     default: 0,
   },
   deathMarkers: {
-    description: 'Show death markers on video timeline',
+    description: Phrase.DeathMarkersDescription,
     type: 'integer',
     default: 0,
   },
   pushToTalk: {
-    description: 'Enable push-to-talk for mic recording',
+    description: Phrase.PushToTalkDescription,
     type: 'boolean',
     default: false,
   },
   pushToTalkKey: {
-    description: 'Push-to-talk key code',
+    description: Phrase.PushToTalkKeyDescription,
     type: 'integer',
     default: 0,
   },
   pushToTalkMouseButton: {
-    description: 'Push-to-talk mouse button',
+    description: Phrase.PushToTalkMouseButtonDescription,
     type: 'integer',
     default: 0,
   },
   pushToTalkModifiers: {
-    description: 'Push-to-talk modifier keys',
+    description: Phrase.PushToTalkModifiersDescription,
     type: 'string',
     default: '',
   },
   pushToTalkReleaseDelay: {
-    description: 'Push-to-talk release delay in ms',
+    description: Phrase.PushToTalkReleaseDelayDescription,
     type: 'integer',
     default: 400,
   },
   obsAudioSuppression: {
-    description: 'Enable audio noise suppression',
+    description: Phrase.ObsAudioSuppressionDescription,
     type: 'boolean',
     default: false,
-  },
-  cloudStorage: {
-    description: 'Enable cloud storage',
-    type: 'boolean',
-    default: false,
-  },
-  cloudUpload: {
-    description: 'Enable cloud upload',
-    type: 'boolean',
-    default: false,
-  },
-  cloudUploadClips: {
-    description: 'Upload clips to cloud',
-    type: 'boolean',
-    default: false,
-  },
-  cloudAccountName: {
-    description: 'Cloud account name',
-    type: 'string',
-    default: '',
-  },
-  cloudAccountPassword: {
-    description: 'Cloud account password',
-    type: 'string',
-    default: '',
-  },
-  cloudGuildName: {
-    description: 'Cloud guild name',
-    type: 'string',
-    default: '',
   },
   language: {
-    description: 'Application language',
+    description: Phrase.LanguageDescription,
     type: 'string',
     default: 'English',
   },
   hideEmptyCategories: {
-    description: 'Hide categories with no videos',
+    description: Phrase.HideEmptyCategoriesDescription,
     type: 'boolean',
     default: false,
   },
   hardwareAcceleration: {
-    description: 'Enable hardware acceleration for the app',
+    description: Phrase.HardwareAccelerationDescription,
     type: 'boolean',
     default: true,
   },
   forceSdr: {
-    description: 'Force SDR color space',
+    description: Phrase.ForceSdrDescription,
     type: 'boolean',
     default: false,
   },
   videoSourceScale: {
-    description: 'Video source scale',
+    description: Phrase.VideoSourceScaleDescription,
     type: 'number',
     default: 1,
   },
   videoSourceXPosition: {
-    description: 'Video source X position',
+    description: Phrase.VideoSourceXPositionDescription,
     type: 'number',
     default: 0,
   },
   videoSourceYPosition: {
-    description: 'Video source Y position',
+    description: Phrase.VideoSourceYPositionDescription,
     type: 'number',
     default: 0,
   },
   manualRecord: {
-    description: 'Enable manual recording',
+    description: Phrase.ManualRecordDescription,
     type: 'boolean',
     default: false,
   },
   manualRecordHotKey: {
-    description: 'Manual recording hotkey code',
+    description: Phrase.ManualRecordHotKeyDescription,
     type: 'integer',
     default: 0,
   },
@@ -346,22 +311,12 @@ export const configSchema: Record<string, any> = {
     default: '',
   },
   manualRecordSoundAlert: {
-    description: 'Play sound when manual recording starts/stops',
+    description: Phrase.ManualRecordSoundAlertDescription,
     type: 'boolean',
     default: false,
-  },
-  manualRecordUpload: {
-    description: 'Upload manual recordings to cloud',
-    type: 'boolean',
-    default: false,
-  },
-  chatUserNameAgreed: {
-    description: 'Chat username agreed',
-    type: 'string',
-    default: '',
   },
   firstTimeSetup: {
-    description: 'Whether this is the first time setup',
+    description: Phrase.FirstTimeSetupDescription,
     type: 'boolean',
     default: true,
   },

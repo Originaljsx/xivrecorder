@@ -82,11 +82,11 @@ const FFXIVSettings = (props: IProps) => {
     <div className="flex flex-col gap-y-6">
       <div className="flex flex-col w-[500px]">
         <Label htmlFor="iinactLogPath" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.RetailLogPathLabel)}
+          {getLocalePhrase(appState.language, Phrase.IINACTLogPathLabel)}
           <Tooltip
             content={getLocalePhrase(
               appState.language,
-              Phrase.RetailLogPathDescription,
+              Phrase.IINACTLogPathDescription,
             )}
             side="top"
           >
@@ -104,7 +104,7 @@ const FFXIVSettings = (props: IProps) => {
           <span className="text-error text-sm">
             {getLocalePhrase(
               appState.language,
-              Phrase.InvalidRetailLogPathText,
+              Phrase.InvalidIINACTLogPathText,
             )}
           </span>
         )}
@@ -116,11 +116,11 @@ const FFXIVSettings = (props: IProps) => {
             htmlFor="recordCrystallineConflict"
             className="flex items-center"
           >
-            {getLocalePhrase(appState.language, Phrase.RecordRetailLabel)}
+            {getLocalePhrase(appState.language, Phrase.RecordCrystallineConflictLabel)}
             <Tooltip
               content={getLocalePhrase(
                 appState.language,
-                Phrase.RecordRetailDescription,
+                Phrase.RecordCrystallineConflictDescription,
               )}
               side="right"
             >

@@ -151,7 +151,11 @@ type Metadata = {
   overrun: number;
   tag?: string;
   delete?: boolean; // signals video should be deleted when possible
-  uniqueHash?: string; // used for cloud video grouping
+  uniqueHash?: string; // used to group multiple viewpoints of one activity
+  /** Size of the video file on disk in bytes, recorded when saved. */
+  size?: number;
+  /** The OBS encoder the video was recorded with. */
+  encoder?: string;
   protected?: boolean;
   appVersion?: string;
 };
@@ -219,26 +223,6 @@ type PvpStatsMatch = {
 };
 
 /**
- * We mandate some fields are present for cloud videos that are optional for
- * disk based videos.
- */
-type CloudMetadata = Metadata & {
-  videoName: string;
-  videoKey: string;
-  start: number;
-  uniqueHash: string;
-};
-
-/**
- * When we retrieve state from the WCR API, we have a few additional entries
- * in the data, these are signed by the API so that we can read them without
- * the client having credentials.
- */
-type CloudSignedMetadata = CloudMetadata & {
-  signedVideoKey: string;
-};
-
-/**
  * All fields in the raw type can be undefined to force us to check them
  * before use. In theory anything can be present or not present in the
  * metadata files.
@@ -261,7 +245,6 @@ type RendererVideo = Metadata & {
   mtime: number;
   videoSource: string;
   isProtected: boolean;
-  cloud: boolean;
   multiPov: RendererVideo[];
   uniqueId: string;
 };
@@ -295,6 +278,12 @@ type AudioSource = {
   friendly?: string;
   device?: string | number;
   volume: number;
+  /**
+   * Bitmask of the OBS audio tracks this source is mixed into. There are
+   * exactly six tracks; track 1 is the one played back in the app. Undefined
+   * means track 1 only.
+   */
+  tracks?: number;
 };
 
 /**
@@ -304,15 +293,6 @@ enum Pages {
   'None',
   'SceneEditor',
   'Settings',
-}
-
-/**
- * Storage filtering options.
- */
-enum StorageFilter {
-  DISK = 'Disk',
-  CLOUD = 'Cloud',
-  BOTH = 'Both',
 }
 
 /**
@@ -326,21 +306,12 @@ type AppState = {
   viewpointSelectionOpen: boolean;
   videoFilterTags: Tag[];
   dateRangeFilter: DateValueType;
-  storageFilter: StorageFilter;
   videoFullScreen: boolean;
   playing: boolean;
   language: Language;
-  cloudStatus: CloudStatus;
   diskStatus: DiskStatus;
-  chatOpen: boolean;
+  drawerOpen: boolean;
   preferredViewpoint: string;
-};
-
-type CloudState = {
-  uploadProgress: number;
-  downloadProgress: number;
-  queuedUploads: number;
-  queuedDownloads: number;
 };
 
 type TPreviewPosition = {
@@ -411,14 +382,6 @@ type ObsAudioConfig = {
   pushToTalkModifiers: string;
 };
 
-type CloudConfig = {
-  cloudStorage: boolean;
-  cloudUpload: boolean;
-  cloudAccountName: string;
-  cloudAccountPassword: string;
-  cloudGuildName: string;
-};
-
 enum DeathMarkers {
   NONE = 'None',
   OWN = 'Own',
@@ -443,28 +406,9 @@ type SliderMark = {
   label: JSX.Element;
 };
 
-type CloudStatus = {
-  enabled: boolean;
-  authenticated: boolean;
-  authorized: boolean;
-  guild: string;
-  available: string[];
-  read: boolean;
-  write: boolean;
-  del: boolean;
-  usage: number;
-  limit: number;
-};
-
 type DiskStatus = {
   usage: number;
   limit: number;
-};
-
-type CloudObject = {
-  key: string;
-  size: number;
-  lastMod: Date;
 };
 
 interface IBrowserWindow {
@@ -472,19 +416,6 @@ interface IBrowserWindow {
     send: (channel: string) => void;
   };
 }
-
-type UploadQueueItem = {
-  path: string;
-};
-
-type CreateMultiPartUploadResponseBody = {
-  urls: string[];
-};
-
-type CompleteMultiPartUploadRequestBody = {
-  etags: string[];
-  key: string;
-};
 
 export interface ISettingsSubCategory {
   nameSubCategory: string;
@@ -647,7 +578,6 @@ export {
   ObsVideoConfig,
   ObsOverlayConfig,
   ObsAudioConfig,
-  CloudConfig,
   DeathMarkers,
   VideoMarker,
   MarkerColors,
@@ -655,16 +585,8 @@ export {
   ErrorReport,
   Crashes,
   SliderMark,
-  CloudStatus,
   DiskStatus,
-  CloudObject,
   IBrowserWindow,
-  UploadQueueItem,
-  CloudMetadata,
-  CloudSignedMetadata,
-  CreateMultiPartUploadResponseBody,
-  CompleteMultiPartUploadRequestBody,
-  StorageFilter,
   ObsSourceCallbackInfo,
   ObsVolmeterCallbackInfo,
   VideoSourceName,
@@ -675,6 +597,5 @@ export {
   BoxDimensions,
   FFXIVProcessEvent,
   SoundAlerts,
-  CloudState,
   ActivityStatus,
 };

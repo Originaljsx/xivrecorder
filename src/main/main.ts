@@ -17,7 +17,6 @@ import { getLocalePhrase, Language } from 'localisation/translations';
 import {
   resolveHtmlPath,
   openSystemExplorer,
-  setupApplicationLogging,
   getAvailableDisplays,
   getAssetPath,
   handleSafeVodRequest,
@@ -27,10 +26,10 @@ import {
 import { OurDisplayType, SoundAlerts, VideoPlayerSettings } from './types';
 import ConfigService from '../config/ConfigService';
 import Manager from './Manager';
+import { setupApplicationLogging } from './logging';
 import AppUpdater from './AppUpdater';
 import MenuBuilder from './menu';
 import { Phrase } from 'localisation/phrases';
-import CloudClient from 'storage/CloudClient';
 import DiskClient from 'storage/DiskClient';
 import Poller from 'utils/Poller';
 import Recorder from './Recorder';
@@ -55,8 +54,8 @@ const manager = new Manager();
 /**
  * Create a settings store to handle the config.
  * This defaults to a path like:
- *   - (prod) "C:\Users\alexa\AppData\Roaming\XIVRecorder\config-v3.json"
- *   - (dev)  "C:\Users\alexa\AppData\Roaming\Electron\config-v3.json"
+ *   - (prod) "%APPDATA%\XIVRecorder\config-v3.json"
+ *   - (dev)  "%APPDATA%\Electron\config-v3.json"
  */
 const cfg = ConfigService.getInstance();
 
@@ -74,10 +73,18 @@ if (firstTimeSetup) {
 // It's a common problem that hardware acceleration causes rendering issues.
 // Unclear why this happens and surely not an application bug but we can
 // make it easy for users to disable it if they want to.
-if (!cfg.get<boolean>('hardwareAcceleration')) {
+// This is applied on launch and while the config can be changed the setting
+// is immutable for the remainder of the processes lifetime.
+const hardwareAccelerationAtStartup = cfg.get<boolean>('hardwareAcceleration');
+
+if (!hardwareAccelerationAtStartup) {
   console.info('[Main] Disabling hardware acceleration');
   app.disableHardwareAcceleration();
 }
+
+ipcMain.handle('getHardwareAcceleration', () => {
+  return hardwareAccelerationAtStartup;
+});
 
 // Register the vod:// protocol as privileged. Required to securely play
 // videos from disk.
@@ -225,14 +232,11 @@ const createWindow = async () => {
     // refresh, otherwise the frontend will be in its default state
     // which may not reflect reality.
     const disk = DiskClient.getInstance();
-    const cloud = CloudClient.getInstance();
 
     await Promise.all([
       manager.refreshStatus(),
       disk.refreshStatus(),
       disk.refreshVideos(),
-      cloud.refreshStatus(),
-      cloud.refreshVideos(),
     ]);
   });
 
@@ -408,35 +412,6 @@ ipcMain.on('openURL', (event, args) => {
  */
 ipcMain.handle('getAllDisplays', (): OurDisplayType[] => {
   return getAvailableDisplays();
-});
-
-const refreshCloudGuilds = async () => {
-  console.info('[Main] Frontend triggered cloud guilds refresh');
-  const client = CloudClient.getInstance();
-  await client.fetchAffiliations(true);
-  client.refreshStatus();
-};
-
-ipcMain.on('refreshCloudGuilds', refreshCloudGuilds);
-
-ipcMain.handle('getOrCreateChatCorrelator', async (event, video) => {
-  const client = CloudClient.getInstance();
-  return client.getOrCreateChatCorrelator(video);
-});
-
-ipcMain.handle('getChatMessages', async (event, correlator) => {
-  const client = CloudClient.getInstance();
-  return client.getChatMessages(correlator);
-});
-
-ipcMain.on('postChatMessage', (event, correlator, message) => {
-  const client = CloudClient.getInstance();
-  client.postChatMessage(correlator, message);
-});
-
-ipcMain.on('deleteChatMessage', (event, id) => {
-  const client = CloudClient.getInstance();
-  client.deleteChatMessage(id);
 });
 
 /**

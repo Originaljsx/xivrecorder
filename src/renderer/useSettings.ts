@@ -57,12 +57,6 @@ export const getSettings = (): ConfigurationSchema => {
     pushToTalkModifiers: getConfigValue<string>('pushToTalkModifiers'),
     pushToTalkReleaseDelay: getConfigValue<number>('pushToTalkReleaseDelay'),
     obsAudioSuppression: getConfigValue<boolean>('obsAudioSuppression'),
-    cloudStorage: getConfigValue<boolean>('cloudStorage'),
-    cloudUpload: getConfigValue<boolean>('cloudUpload'),
-    cloudUploadClips: getConfigValue<boolean>('cloudUploadClips'),
-    cloudAccountName: getConfigValue<string>('cloudAccountName'),
-    cloudAccountPassword: getConfigValue<string>('cloudAccountPassword'),
-    cloudGuildName: getConfigValue<string>('cloudGuildName'),
     language: getConfigValue<string>('language'),
     hideEmptyCategories: getConfigValue<boolean>('hideEmptyCategories'),
     hardwareAcceleration: getConfigValue<boolean>('hardwareAcceleration'),
@@ -74,8 +68,6 @@ export const getSettings = (): ConfigurationSchema => {
     manualRecordHotKey: getConfigValue<number>('manualRecordHotKey'),
     manualRecordHotKeyModifiers: getConfigValue<string>('manualRecordHotKeyModifiers'),
     manualRecordSoundAlert: getConfigValue<boolean>('manualRecordSoundAlert'),
-    manualRecordUpload: getConfigValue<boolean>('manualRecordUpload'),
-    chatUserNameAgreed: getConfigValue<string>('chatUserNameAgreed'),
     firstTimeSetup: getConfigValue<boolean>('firstTimeSetup'),
     /* eslint-enable prettier/prettier */
   };

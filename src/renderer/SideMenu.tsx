@@ -30,13 +30,11 @@ import Menu from './components/Menu';
 import Separator from './components/Separator/Separator';
 import LogsButton from './LogButton';
 import TestButton from './TestButton';
-import DiscordButton from './DiscordButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
-import CloudStatusCard from './containers/ApplicationStatusCard/CloudStatusCard';
 import { Phrase } from 'localisation/phrases';
-import PatreonButton from './PatreonButton';
+import GitHubButton from './GitHubButton';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 
@@ -240,7 +238,6 @@ const SideMenu = (props: IProps) => {
         config={config}
         appState={appState}
       />
-      <CloudStatusCard appState={appState} />
       <Separator className="mb-4" />
       <ScrollArea
         className="w-full h-[calc(100%-80px)]"
@@ -279,8 +276,7 @@ const SideMenu = (props: IProps) => {
           />
           <LogsButton appState={appState} />
           <TestButton recorderStatus={recorderStatus} appState={appState} />
-          <DiscordButton appState={appState} />
-          <PatreonButton appState={appState} />
+          <GitHubButton appState={appState} />
         </div>
         {!!appVersion && (
           <div className="w-full mt-1 text-foreground font-sans text-[11px] font-bold text-center opacity-75">

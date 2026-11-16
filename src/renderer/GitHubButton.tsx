@@ -1,10 +1,11 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPatreon } from '@fortawesome/free-brands-svg-icons';
+import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { AppState } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import { Phrase } from 'localisation/phrases';
+import { projectUrl } from 'main/constants';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -12,26 +13,29 @@ interface IProps {
   appState: AppState;
 }
 
-export default function PatreonButton(props: IProps) {
+/**
+ * Opens the XIV Recorder project page, for help, bug reports and releases.
+ */
+export default function GitHubButton(props: IProps) {
   const { appState } = props;
-  const openPatreonURL = () => {
-    // TODO: Set up XIVRecorder Patreon page
-    ipc.sendMessage('openURL', ['https://github.com/jacobaw/xivrecorder']);
+
+  const openProjectURL = () => {
+    ipc.sendMessage('openURL', [projectUrl]);
   };
 
   return (
     <Tooltip
-      content={getLocalePhrase(appState.language, Phrase.PatreonButtonLabel)}
+      content={getLocalePhrase(appState.language, Phrase.GitHubButtonLabel)}
       side="top"
     >
       <Button
-        id="patreon-button"
+        id="github-button"
         type="button"
-        onClick={openPatreonURL}
+        onClick={openProjectURL}
         variant="ghost"
         size="icon"
       >
-        <FontAwesomeIcon icon={faPatreon} size="lg" />
+        <FontAwesomeIcon icon={faGithub} size="lg" />
       </Button>
     </Tooltip>
   );

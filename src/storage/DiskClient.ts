@@ -14,11 +14,10 @@ import {
 import { DiskStatus, RendererVideo } from 'main/types';
 import DiskSizeMonitor from './DiskSizeMonitor';
 import { ipcMain } from 'electron';
-import assert from 'assert';
 import { send } from 'main/main';
 
 /**
- * A client for retrieving resources from the cloud.
+ * A client for managing recordings stored on local disk.
  */
 export default class DiskClient implements StorageClient {
   /**
@@ -222,7 +221,7 @@ export default class DiskClient implements StorageClient {
   private setupListeners() {
     ipcMain.on('deleteVideos', async (_event, args) => {
       const videos = args as RendererVideo[];
-      const toDelete = videos.filter((v) => !v.cloud).map((v) => v.videoSource);
+      const toDelete = videos.map((v) => v.videoSource);
       if (toDelete.length < 1) return;
       this.deleteVideos(toDelete);
     });
@@ -231,26 +230,21 @@ export default class DiskClient implements StorageClient {
       const action = args[0] as string;
 
       if (action === 'open') {
-        // Open only called for disk based video, see openURL for cloud version.
         const src = args[1] as string;
-        const cloud = args[2] as boolean;
-        assert(!cloud);
         openSystemExplorer(src);
       }
 
       if (action === 'protect') {
         const protect = args[1] as boolean;
         const videos = args[2] as RendererVideo[];
-        const disk = videos.filter((v) => !v.cloud);
-        const toProtect = disk.map((v) => v.videoSource);
+        const toProtect = videos.map((v) => v.videoSource);
         this.protectVideos(toProtect, protect);
       }
 
       if (action === 'tag') {
         const tag = args[1] as string;
         const videos = args[2] as RendererVideo[];
-        const disk = videos.filter((v) => !v.cloud);
-        const toTag = disk.map((v) => v.videoSource);
+        const toTag = videos.map((v) => v.videoSource);
         this.tagVideos(toTag, tag);
       }
     });

@@ -13,22 +13,15 @@ import {
   LockKeyhole,
   Trash,
   LockOpen,
-  CloudUpload,
-  CloudDownload,
   ArrowLeftFromLine,
   ArrowRightToLine,
-  Cloud,
 } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import SearchBar from './SearchBar';
 import VideoMarkerToggles from './VideoMarkerToggles';
 import { useSettings } from './useSettings';
-import {
-  getVideoCategoryFilter,
-  getVideoStorageFilter,
-  povDiskFirstNameSort,
-} from './rendererutils';
+import { getVideoCategoryFilter, povNameSort } from './rendererutils';
 import Separator from './components/Separator/Separator';
 import { Button } from './components/Button/Button';
 import VideoSelectionTable from './components/Tables/VideoSelectionTable';
@@ -44,12 +37,8 @@ import MatchStats from './MatchStats';
 import useTable from './components/Tables/TableData';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DateRangePicker from './DateRangePicker';
-import StorageFilterToggle from './StorageFilterToggle';
 import VideoCorrelator from './VideoCorrelator';
 import { Phrase } from 'localisation/phrases';
-import BulkTransferDialog from './BulkTransferDialog';
-import VideoChat from './VideoChat';
-import ConfirmChatNamePrompt from './ConfirmChatNamePrompt';
 
 interface IProps {
   category: VideoCategory;
@@ -80,12 +69,9 @@ const CategoryPage = (props: IProps) => {
     videoFilterTags,
     language,
     dateRangeFilter,
-    cloudStatus,
-    storageFilter,
-    chatOpen,
+    drawerOpen,
   } = appState;
 
-  const { write, del } = cloudStatus;
   const [config, setConfig] = useSettings();
 
   // The category state, recalculated only when required.
@@ -94,12 +80,10 @@ const CategoryPage = (props: IProps) => {
     return videoState.filter(categoryFilter);
   }, [videoState, category]);
 
-  // Filter by storage type before we apply grouping.
+  // Group multiple viewpoints of the same activity together.
   const correlatedState = useMemo<RendererVideo[]>(() => {
-    const storageFilterFn = getVideoStorageFilter(storageFilter);
-    const storageFilteredState = categoryState.filter(storageFilterFn);
-    return VideoCorrelator.correlate(storageFilteredState);
-  }, [categoryState, storageFilter]);
+    return VideoCorrelator.correlate(categoryState);
+  }, [categoryState]);
 
   // Now apply filtering based on search tags and date range.
   const filteredState = useMemo<RendererVideo[]>(() => {
@@ -144,37 +128,6 @@ const CategoryPage = (props: IProps) => {
     };
   }, [playerHeight]);
 
-  const renderChat = (video: RendererVideo | undefined) => {
-    if (!video) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center text-foreground text-sm font-bold">
-          <Cloud size={35} className="mb-2" />
-          {getLocalePhrase(language, Phrase.ChatUploadToCloudText)}
-        </div>
-      );
-    }
-
-    if (config.cloudAccountName !== config.chatUserNameAgreed) {
-      return (
-        <ConfirmChatNamePrompt
-          cloudAccountName={config.cloudAccountName}
-          setConfig={setConfig}
-          language={language}
-        />
-      );
-    }
-
-    return (
-      <VideoChat
-        key={video.videoName}
-        videoPlayerRef={videoPlayerRef}
-        video={video}
-        language={language}
-        deletePermissions={del}
-      />
-    );
-  };
-
   /**
    * Handle a resize event.
    */
@@ -196,18 +149,12 @@ const CategoryPage = (props: IProps) => {
       ? selectedRow.original
       : filteredState[0];
 
-    // Only try to find a chat video if we have a video with cloud storage,
-    // a start time and a hash, else we cannot find the chat correlator.
-    const chatVideo = [activeParentVideo, ...activeParentVideo.multiPov].find(
-      (rv) => rv.cloud && rv.uniqueHash && rv.start,
-    );
-
     return (
       <div className="max-w-[500px] min-w-[500px] h-full bg-background-higher flex flex-col mx-2 gap-y-2">
         <div className="flex items-start">
           <Button
             onClick={() =>
-              setAppState((prev) => ({ ...prev, chatOpen: false }))
+              setAppState((prev) => ({ ...prev, drawerOpen: false }))
             }
             variant="ghost"
             className="mt-2"
@@ -234,7 +181,6 @@ const CategoryPage = (props: IProps) => {
             <MatchStats video={activeParentVideo} />
           </div>
         )}
-        {renderChat(chatVideo)}
       </div>
     );
   };
@@ -243,7 +189,7 @@ const CategoryPage = (props: IProps) => {
     return (
       <div className="h-full relative">
         <Button
-          onClick={() => setAppState((prev) => ({ ...prev, chatOpen: true }))}
+          onClick={() => setAppState((prev) => ({ ...prev, drawerOpen: true }))}
           variant="ghost"
           className="absolute top-0 right-0 m-2"
           size="xs"
@@ -263,7 +209,7 @@ const CategoryPage = (props: IProps) => {
    */
   const getVideoPlayer = () => {
     const toShow = filteredState[0] ? filteredState[0] : categoryState[0];
-    const povs = [toShow, ...toShow.multiPov].sort(povDiskFirstNameSort);
+    const povs = [toShow, ...toShow.multiPov].sort(povNameSort);
 
     const videosToPlay =
       selectedVideos.length > 0 ? selectedVideos : povs.slice(0, 1);
@@ -281,7 +227,7 @@ const CategoryPage = (props: IProps) => {
         enable={{ bottom: true }}
         bounds="parent"
         onResize={onResize}
-        minHeight={chatOpen ? 500 : undefined}
+        minHeight={drawerOpen ? 500 : undefined}
         handleStyles={{
           bottom: {
             width: '50%',
@@ -300,7 +246,7 @@ const CategoryPage = (props: IProps) => {
         <div className="flex h-full w-full">
           <VideoPlayer
             ref={videoPlayerRef}
-            key={videosToPlay.map((rv) => rv.videoName + rv.cloud).join(', ')}
+            key={videosToPlay.map((rv) => rv.videoName).join(', ')}
             videos={videosToPlay}
             categoryState={categoryState}
             persistentProgress={persistentProgress}
@@ -309,8 +255,8 @@ const CategoryPage = (props: IProps) => {
             setAppState={setAppState}
           />
 
-          {chatOpen && renderDrawerOpen(selectedVideoAppVersion)}
-          {!chatOpen && renderDrawerClosed()}
+          {drawerOpen && renderDrawerOpen(selectedVideoAppVersion)}
+          {!drawerOpen && renderDrawerClosed()}
         </div>
       </Resizable>
     );
@@ -334,17 +280,11 @@ const CategoryPage = (props: IProps) => {
     const selectedViewpoints = getAllSelectedViewpoints();
 
     // We don't want multi player mode to be accessible if there isn't
-    // multiple viewpoints, so check for that. Important to filter by
-    // unique name here so we don't allow multi player mode for two
-    // identical videos with different storage (i.e. disk/cloud).
+    // multiple viewpoints, so check for that.
     //
     // Handle the case where no row is selected yet but we do have atleast
     // an entry in the video selection table so default to the first to
     // decide if we can do multi player mode or not.
-    //
-    // The dedup function here removes videos with matching names, but
-    // possibly alternative storage. We don't want to load a disk and cloud
-    // pov of the same video.
     const dedup = (rv: RendererVideo, idx: number, arr: RendererVideo[]) =>
       arr.findIndex((i) => i.videoName === rv.videoName) === idx;
 
@@ -357,7 +297,7 @@ const CategoryPage = (props: IProps) => {
           ? [filteredState[0], ...filteredState[0].multiPov]
           : [categoryState[0], ...categoryState[0].multiPov]
     )
-      .sort(povDiskFirstNameSort)
+      .sort(povNameSort)
       .filter(dedup);
 
     const names = multiPlayerOpts.map((rv) => rv.videoName);
@@ -379,10 +319,8 @@ const CategoryPage = (props: IProps) => {
         const state = [...prev];
 
         state.forEach((rv) => {
-          // A video is uniquely identified by its name and storage type.
-          const match = videos.find(
-            (v) => v.videoName === rv.videoName && v.cloud === rv.cloud,
-          );
+          // A video is uniquely identified by its name.
+          const match = videos.find((v) => v.videoName === rv.videoName);
 
           if (match) {
             rv.isProtected = protect;
@@ -400,25 +338,12 @@ const CategoryPage = (props: IProps) => {
       // action is to protect.
       const lock = !toProtect.every((v) => v.isProtected);
 
-      // Disable the protect button if there are no selected viewpoints, if we
-      // don't have write permissions, or if the action is to unprotect and we
-      // don't have delete permissions.
-      const noPermission =
-        (!write && toProtect.some((v) => v.cloud)) || // Some in the selection are cloud videos and no write permission.
-        (!del && !lock && toProtect.some((v) => v.cloud)); // Some in the selection are locked cloud videos no delete permission.
-
-      const disabled = noPermission || toProtect.length < 1;
+      const disabled = toProtect.length < 1;
       const icon = lock ? <LockKeyhole size={18} /> : <LockOpen size={18} />;
 
-      let tooltip = '';
-
-      if (noPermission) {
-        tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-      } else if (lock) {
-        tooltip = getLocalePhrase(language, Phrase.StarSelected);
-      } else {
-        tooltip = getLocalePhrase(language, Phrase.UnstarSelected);
-      }
+      const tooltip = lock
+        ? getLocalePhrase(language, Phrase.StarSelected)
+        : getLocalePhrase(language, Phrase.UnstarSelected);
 
       return (
         <Tooltip content={tooltip}>
@@ -440,12 +365,8 @@ const CategoryPage = (props: IProps) => {
     const renderDeleteButton = () => {
       const toDelete = selectedViewpoints;
 
-      const noPermission = !del && toDelete.some((v) => v.cloud);
-      const disabled = toDelete.length < 1 || noPermission;
-
-      const tooltip = noPermission
-        ? getLocalePhrase(language, Phrase.GuildNoPermission)
-        : getLocalePhrase(language, Phrase.BulkDeleteButtonTooltip);
+      const disabled = toDelete.length < 1;
+      const tooltip = getLocalePhrase(language, Phrase.BulkDeleteButtonTooltip);
 
       return (
         <Tooltip content={tooltip}>
@@ -471,69 +392,12 @@ const CategoryPage = (props: IProps) => {
       );
     };
 
-    const renderBulkTransferButton = (upload: boolean) => {
-      const toTransfer = selectedViewpoints
-        .filter((rv) => rv.cloud === !upload)
-        .filter(
-          (rv) =>
-            selectedViewpoints.filter((v) => v.videoName === rv.videoName)
-              .length < 2, // If we have more 2 viewpoints with the same name then one must be disk and one cloud.
-        );
-
-      const noPermission = upload && !write;
-
-      const disabled =
-        toTransfer.length < 1 || noPermission || !cloudStatus.authorized;
-
-      let tooltip = upload
-        ? getLocalePhrase(language, Phrase.BulkUploadButtonTooltip)
-        : getLocalePhrase(language, Phrase.BulkDownloadButtonTooltip);
-
-      if (noPermission) {
-        tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-      }
-
-      const icon = upload ? (
-        <CloudUpload size={18} />
-      ) : (
-        <CloudDownload size={18} />
-      );
-
-      return (
-        <Tooltip content={tooltip}>
-          <div>
-            <BulkTransferDialog
-              key={toTransfer.map((v) => v.videoName).join(',')} // Forces a remount on selection change.
-              inScope={toTransfer}
-              appState={appState}
-              upload={upload}
-            >
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={disabled}
-                className="border border-background"
-              >
-                {icon}
-              </Button>
-            </BulkTransferDialog>
-          </div>
-        </Tooltip>
-      );
-    };
-
     const renderSelectionLabel = () => {
       const { language } = appState;
       let text = getLocalePhrase(language, Phrase.Selection);
 
       if (selectedRows.length > 1) {
         text += ` (${selectedRows.length})`;
-      }
-
-      if (!config.cloudStorage || (write && del)) {
-        // Cloud storage if off, or we have full permission. No need
-        // to render the disk only switch.
-        return <Label>{text}</Label>;
       }
 
       return <Label>{text}</Label>;
@@ -570,24 +434,11 @@ const CategoryPage = (props: IProps) => {
               <Label>{getLocalePhrase(language, Phrase.DateFilter)}</Label>
               <DateRangePicker appState={appState} setAppState={setAppState} />
             </div>
-            <div>
-              <Label>
-                {getLocalePhrase(language, Phrase.StorageFilterLabel)}
-              </Label>
-              <StorageFilterToggle
-                categoryState={categoryState}
-                appState={appState}
-                setAppState={setAppState}
-                table={table}
-              />
-            </div>
           </div>
 
           <div>
             {renderSelectionLabel()}
             <div className="flex gap-x-1 mr-2 py-[1px]">
-              {config.cloudUpload && renderBulkTransferButton(true)}
-              {config.cloudStorage && renderBulkTransferButton(false)}
               {renderProtectButton()}
               {renderDeleteButton()}
             </div>
@@ -607,7 +458,7 @@ const CategoryPage = (props: IProps) => {
 
   const openSetupInstructions = () => {
     window.electron.ipcRenderer.sendMessage('openURL', [
-      'https://www.warcraftrecorder.com/about',
+      'https://github.com/Originaljsx/xivrecorder#readme',
     ]);
   };
 

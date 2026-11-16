@@ -1,6 +1,5 @@
 /**
  * Simple async task queue that processes tasks sequentially.
- * Reused from wow-recorder.
  */
 export default class AsyncQueue {
   private queue: (() => Promise<void>)[] = [];

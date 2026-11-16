@@ -4,6 +4,7 @@ import { configSchema } from 'config/configSchema';
 import {
   AppWindow,
   AudioLines,
+  Gamepad2,
   Info,
   MicVocal,
   PlusIcon,
@@ -45,8 +46,29 @@ import {
   PopoverTrigger,
 } from './components/Popover/Popover';
 import { Phrase } from 'localisation/phrases';
+import {
+  defaultAudioTrack,
+  ffxivAudioWindow,
+  ffxivExecutable,
+  obsAudioTracks,
+} from 'main/constants';
+import { ToggleGroup, ToggleGroupItem } from './components/ToggleGroup/ToggleGroup';
 
 const ipc = window.electron.ipcRenderer;
+
+/**
+ * Is this source the per-application capture of the FFXIV game? Matching is by
+ * executable, so the window title / class part of the device string can vary.
+ */
+const isGameAudioSource = (src: AudioSource) =>
+  src.type === AudioSourceType.PROCESS &&
+  typeof src.device === 'string' &&
+  src.device.toLowerCase().endsWith(`:${ffxivExecutable}`);
+
+/**
+ * The name OBS gives the FFXIV window in its window list.
+ */
+const gameAudioFriendlyName = `[${ffxivExecutable}]: FINAL FANTASY XIV`;
 let debounceTimer: NodeJS.Timeout | undefined;
 
 interface IProps {
@@ -447,7 +469,33 @@ const AudioSourceControls = (props: IProps) => {
     }
   };
 
+  const setSourceAudioTracks = (src: AudioSource, values: string[]) => {
+    const tracks = values.reduce((mask, value) => mask | Number(value), 0);
+
+    // Keep at least one track assigned to each source.
+    if (tracks === 0) return;
+
+    setConfig((prev) => ({
+      ...prev,
+      audioSources: prev.audioSources.map((source) =>
+        source.id === src.id ? { ...source, tracks } : source,
+      ),
+    }));
+
+    ipc.setAudioSourceTracks(src.id, tracks);
+  };
+
   const renderSourceType = (src: AudioSource) => {
+    if (isGameAudioSource(src)) {
+      return (
+        <Tooltip content={getLocalePhrase(language, Phrase.GameAudioLabel)}>
+          <div className="flex justify-center items-center text-foreground-lighter gap-x-1">
+            <Gamepad2 />
+          </div>
+        </Tooltip>
+      );
+    }
+
     if (src.type === AudioSourceType.OUTPUT) {
       return (
         <div className="flex justify-center items-center  text-foreground-lighter gap-x-1">
@@ -513,10 +561,17 @@ const AudioSourceControls = (props: IProps) => {
       // as it's common for the windows to change and we do exe
       // matching anyway.
       if (!found && src.device) {
-        const text =
-          src.type !== AudioSourceType.PROCESS
-            ? `⚠ Unknown device: ${src.friendly}` // TODO: Localise
-            : src.device;
+        let text = src.device;
+
+        if (isGameAudioSource(src)) {
+          // The game isn't running so OBS doesn't list its window, but we
+          // match on the executable so it will still be captured.
+          text = gameAudioFriendlyName;
+        } else if (src.type !== AudioSourceType.PROCESS) {
+          text = `⚠ ${getLocalePhrase(language, Phrase.UnknownDevice)}: ${
+            src.friendly
+          }`;
+        }
 
         items.push(
           <SelectItem key="custom" value={src.device}>
@@ -547,6 +602,34 @@ const AudioSourceControls = (props: IProps) => {
           <SelectContent>{renderSelectItems()}</SelectContent>
         </Select>
       </div>
+    );
+  };
+
+  const renderSourceTrackSelect = (src: AudioSource) => {
+    const tracks = src.tracks ?? defaultAudioTrack;
+
+    const selectedTracks = obsAudioTracks
+      .filter((track) => tracks & track)
+      .map(String);
+
+    return (
+      <ToggleGroup
+        type="multiple"
+        variant="outline"
+        size="default"
+        value={selectedTracks}
+        onValueChange={(values) => setSourceAudioTracks(src, values)}
+      >
+        {obsAudioTracks.map((track, index) => (
+          <ToggleGroupItem
+            key={track}
+            value={String(track)}
+            className="h-10 w-10 flex-none px-0 tabular-nums"
+          >
+            {index + 1}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
     );
   };
 
@@ -607,6 +690,7 @@ const AudioSourceControls = (props: IProps) => {
       <tr key={idx}>
         <td className="px-2">{renderSourceType(src)}</td>
         <td className="px-2">{renderSourceDeviceSelect(src)}</td>
+        <td className="px-2">{renderSourceTrackSelect(src)}</td>
         <td className="px-2">
           <div className="relative h-[38px] w-[150px]">
             <Progress
@@ -656,19 +740,31 @@ const AudioSourceControls = (props: IProps) => {
     );
   };
 
-  const addSource = async (type: AudioSourceType) => {
+  const addSource = async (type: AudioSourceType, gameAudio = false) => {
     const ids = config.audioSources.map((src) => src.id);
     let idx = 1;
 
     // Find the next available name.
-    while (ids.includes(`WCR Audio Source ${idx}`)) {
+    while (ids.includes(`XIVRecorder Audio Source ${idx}`)) {
       idx++;
     }
 
-    const id = `WCR Audio Source ${idx}`;
+    const id = `XIVRecorder Audio Source ${idx}`;
     const name = await ipc.createAudioSource(id, type);
-    const device = type === AudioSourceType.PROCESS ? undefined : 'default';
-    const friendly = device;
+
+    let device: string | undefined;
+    let friendly: string | undefined;
+
+    if (gameAudio) {
+      // Capture only the FFXIV game. This works even if the game is not
+      // currently running, as OBS matches on the executable name.
+      device = ffxivAudioWindow;
+      friendly = gameAudioFriendlyName;
+      ipc.setAudioSourceWindow(name, device);
+    } else if (type !== AudioSourceType.PROCESS) {
+      device = 'default';
+      friendly = device;
+    }
 
     const src: AudioSource = {
       id: name, // Careful to not assume we got the name we asked for.
@@ -676,6 +772,7 @@ const AudioSourceControls = (props: IProps) => {
       friendly,
       device,
       volume: 1,
+      tracks: defaultAudioTrack,
     };
 
     const choices = await getAudioSourceChoices(src);
@@ -692,17 +789,42 @@ const AudioSourceControls = (props: IProps) => {
   };
 
   const renderSourceTable = () => {
+    const header = (phrase: Phrase, tooltip?: Phrase) => (
+      <th className="px-2 pb-1 text-left">
+        <Label className="flex items-center">
+          {getLocalePhrase(language, phrase)}
+          {tooltip !== undefined && (
+            <Tooltip content={getLocalePhrase(language, tooltip)} side="top">
+              <Info size={16} className="inline-flex ml-2" />
+            </Tooltip>
+          )}
+        </Label>
+      </th>
+    );
+
     return (
       <table className="table-auto w-max">
+        <thead>
+          <tr>
+            <th />
+            {header(Phrase.SourceHeading)}
+            {header(Phrase.AudioTracksLabel, Phrase.AudioTracksDescription)}
+            <th />
+            <th />
+            <th />
+          </tr>
+        </thead>
         <tbody>
           {config.audioSources.map(renderSourceRow)}
           <tr>
-            <td colSpan={5}></td>
+            <td colSpan={6}></td>
           </tr>
         </tbody>
       </table>
     );
   };
+
+  const haveGameAudioSource = config.audioSources.some(isGameAudioSource);
 
   const renderHelpText = () => {
     return (
@@ -718,6 +840,20 @@ const AudioSourceControls = (props: IProps) => {
         {config.audioSources.length > 0 && renderSourceTable()}
         {config.audioSources.length < 1 && renderHelpText()}
         <div className="flex gap-2 mx-2">
+          <Tooltip
+            content={getLocalePhrase(language, Phrase.GameAudioDescription)}
+          >
+            <div>
+              <Button
+                onClick={() => addSource(AudioSourceType.PROCESS, true)}
+                disabled={!sourcesAreFullyDefined || haveGameAudioSource}
+                variant="outline"
+              >
+                <PlusIcon className="px-0" />
+                {getLocalePhrase(language, Phrase.GameAudioLabel)}
+              </Button>
+            </div>
+          </Tooltip>
           <Button
             onClick={() => addSource(AudioSourceType.OUTPUT)}
             disabled={!sourcesAreFullyDefined}
@@ -742,6 +878,9 @@ const AudioSourceControls = (props: IProps) => {
             <PlusIcon className="px-0" />
             {getLocalePhrase(language, Phrase.AddApplicationButtonText)}
           </Button>
+        </div>
+        <div className="flex flex-col text-sm text-foreground-lighter mx-2 max-w-[900px]">
+          {getLocalePhrase(language, Phrase.AudioSourcesHelpText)}
         </div>
       </div>
     );

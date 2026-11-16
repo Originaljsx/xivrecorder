@@ -38,7 +38,7 @@ import { Button } from './components/Button/Button';
 
 const ipc = window.electron.ipcRenderer;
 
-const outputResolutions = Object.keys(obsResolutions);
+const outputResolutions = obsResolutions;
 const fpsOptions = [10, 20, 30, 60];
 
 interface IProps {
@@ -63,6 +63,13 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
   const initialRender = useRef(true);
   const highRes = isHighRes(config.obsOutputResolution);
   const [encoders, setEncoders] = useState<Encoder[]>([]);
+
+  // Whether the app was launched with hardware rendering enabled.
+  const [hardwareAcceleration, setHardwareAcceleration] = useState(true);
+
+  useEffect(() => {
+    ipc.getHardwareAcceleration().then(setHardwareAcceleration);
+  }, []);
 
   useEffect(() => {
     const getAvailableEncoders = async () => {
@@ -385,8 +392,33 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     );
   };
 
+  const getHardwareAccelerationWarning = () => {
+    // H.265 and AV1 videos can only be played back in the app with hardware
+    // rendering. Warn if the app was launched without it, or the user has
+    // just disabled it (which will apply on next launch).
+    const advancedCodec = [
+      ESupportedEncoders.AMD_H265,
+      ESupportedEncoders.AMD_AV1,
+      ESupportedEncoders.NVENC_H265,
+      ESupportedEncoders.NVENC_AV1,
+      ESupportedEncoders.QSV_AV1,
+    ].includes(config.obsRecEncoder as ESupportedEncoders);
+
+    const hwRendering = hardwareAcceleration && config.hardwareAcceleration;
+
+    if (!advancedCodec || hwRendering) {
+      return <></>;
+    }
+
+    return (
+      <span className="text-error text-sm w-full">
+        {getLocalePhrase(appState.language, Phrase.CodecNeedsHardwareRendering)}
+      </span>
+    );
+  };
+
   return (
-    <div className="flex flex-col items-center w-full">
+    <div className="flex flex-col items-center w-full gap-y-4">
       {getDisabledText()}
       <div className="flex items-center w-full gap-x-8">
         {getFPSToggle()}
@@ -394,6 +426,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
         {getQualitySelect()}
         {getEncoderSelect()}
       </div>
+      {getHardwareAccelerationWarning()}
     </div>
   );
 };

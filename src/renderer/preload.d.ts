@@ -1,8 +1,7 @@
 import ElectronStore from 'electron-store';
 import { Channels } from 'main/preload';
-import { AudioSourceType, RendererVideo, SceneItem } from 'main/types';
+import { AudioSourceType, SceneItem } from 'main/types';
 import { ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
-import { TChatMessageWithId } from 'types/api';
 
 declare global {
   interface Window {
@@ -62,6 +61,7 @@ declare global {
         setAudioSourceDevice(id: string, device: string): void;
         setAudioSourceWindow(id: string, window: string): void;
         setAudioSourceVolume(id: string, volume: number): void;
+        setAudioSourceTracks(id: string, tracks: number): void;
         setForceMono(enabled: boolean): void;
         setAudioSuppression(enabled: boolean): void;
 
@@ -69,14 +69,9 @@ declare global {
         reconfigureVideo(): void;
         reconfigureAudio(): void;
         reconfigureOverlay(): void;
-        reconfigureCloud(): void;
 
         getSensibleEncoderDefault(): Promise<string>;
-        refreshCloudGuilds(): void;
-        getOrCreateChatCorrelator(video: RendererVideo): Promise<string>;
-        getChatMessages(correlator: string): Promise<TChatMessageWithId[]>;
-        postChatMessage(correlator: string, message: string): void;
-        deleteChatMessage(id: number): void;
+        getHardwareAcceleration(): Promise<boolean>;
         toggleManualRecording(): void;
         forceStopRecording(): void;
       };

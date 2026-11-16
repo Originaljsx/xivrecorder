@@ -30,7 +30,7 @@ export default function CrashStatus(props: IProps) {
       <Typography sx={{ color: 'white', fontSize: '0.75rem', m: 1 }}>
         An OBS crash has occured and has been recovered from. This should not
         happen in normal operation. You may wish to seek help by sharing your
-        XIV Recorder and OBS logs in discord.
+        XIV Recorder and OBS logs on the XIV Recorder GitHub page.
       </Typography>
     );
   };

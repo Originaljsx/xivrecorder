@@ -13,7 +13,6 @@ import {
   RendererVideo,
   VideoMarker,
   RawCombatant,
-  StorageFilter,
   AudioSource,
   AppState,
 } from 'main/types';
@@ -423,10 +422,14 @@ const getFriendlyEncoderName = (enc: ESupportedEncoders) => {
       return 'OBS H.264';
     case ESupportedEncoders.NVENC_H264:
       return 'NVIDIA H.264';
+    case ESupportedEncoders.NVENC_H265:
+      return 'NVIDIA H.265 (HEVC)';
     case ESupportedEncoders.NVENC_AV1:
       return 'NVIDIA AV1';
     case ESupportedEncoders.AMD_H264:
       return 'AMD H.264';
+    case ESupportedEncoders.AMD_H265:
+      return 'AMD H.265 (HEVC)';
     case ESupportedEncoders.AMD_AV1:
       return 'AMD AV1';
     case ESupportedEncoders.QSV_H264:
@@ -434,7 +437,8 @@ const getFriendlyEncoderName = (enc: ESupportedEncoders) => {
     case ESupportedEncoders.QSV_AV1:
       return 'Intel AV1';
     default:
-      throw new Error('Unknown Encoder');
+      console.warn('[rendererutils] Unknown encoder', enc);
+      return String(enc);
   }
 };
 
@@ -593,12 +597,6 @@ const getVideoCategoryFilter = (category: VideoCategory) => {
   return (video: RendererVideo) => video.category === category;
 };
 
-const getVideoStorageFilter = (filter: StorageFilter) => {
-  if (filter === StorageFilter.DISK) return (rv: RendererVideo) => !rv.cloud;
-  if (filter === StorageFilter.CLOUD) return (rv: RendererVideo) => rv.cloud;
-  return () => true;
-};
-
 const getFirstInCategory = (
   videos: RendererVideo[],
   category: VideoCategory,
@@ -620,36 +618,6 @@ const povNameSort = (a: RendererVideo, b: RendererVideo) => {
 
   if (!playerA || !playerB) return 0;
   return playerA.localeCompare(playerB);
-};
-
-const povDiskFirstNameSort = (a: RendererVideo, b: RendererVideo) => {
-  const diskA = !a.cloud;
-  const diskB = !b.cloud;
-
-  if (diskA && !diskB) {
-    return -1;
-  }
-
-  if (diskB && !diskA) {
-    return 1;
-  }
-
-  return povNameSort(a, b);
-};
-
-const povCloudFirstNameSort = (a: RendererVideo, b: RendererVideo) => {
-  const diskA = !a.cloud;
-  const diskB = !b.cloud;
-
-  if (diskA && !diskB) {
-    return 1;
-  }
-
-  if (diskB && !diskA) {
-    return -1;
-  }
-
-  return povNameSort(a, b);
 };
 
 const combatantNameSort = (a: RawCombatant, b: RawCombatant) => {
@@ -722,7 +690,7 @@ const getKeyPressEventString = (
 };
 
 const videoMatch = (a: RendererVideo, b: RendererVideo) =>
-  a.videoName === b.videoName && a.cloud === b.cloud;
+  a.videoName === b.videoName;
 
 const videoMatchName = (a: RendererVideo, name: string) => a.videoName === name;
 
@@ -765,15 +733,13 @@ export {
   getCategoryIndex,
   getFirstInCategory,
   stopPropagation,
-  povCloudFirstNameSort,
-  povDiskFirstNameSort,
+  povNameSort,
   areDatesWithinSeconds,
   toFixedDigits,
   combatantNameSort,
   countUniqueViewpoints,
   videoToDate,
   dateToHumanReadable,
-  getVideoStorageFilter,
   getAudioSourceChoices,
   getKeyPressEventString,
   videoMatch,

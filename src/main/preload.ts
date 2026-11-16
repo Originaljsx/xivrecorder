@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import { ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
-import { AudioSourceType, RendererVideo, SceneItem } from './types';
-import { TChatMessageWithId } from 'types/api';
+import { AudioSourceType, SceneItem } from './types';
 
 export type Channels =
   | 'window'
@@ -21,7 +20,6 @@ export type Channels =
   | 'clip'
   | 'deleteVideos'
   | 'writeClipboard'
-  | 'getShareableLink'
   | 'doAppUpdate'
   | 'volmeter'
   | 'audioSettingsOpen'
@@ -32,6 +30,7 @@ export type Channels =
   | 'deleteAudioSource'
   | 'setAudioSourceDevice'
   | 'setAudioSourceWindow'
+  | 'setAudioSourceTracks'
   | 'getDisplayInfo'
   | 'configurePreview'
   | 'showPreview'
@@ -47,9 +46,8 @@ export type Channels =
   | 'reconfigureVideo'
   | 'reconfigureAudio'
   | 'reconfigureOverlay'
-  | 'reconfigureCloud'
   | 'getSensibleEncoderDefault'
-  | 'refreshCloudGuilds';
+  | 'getHardwareAcceleration';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
@@ -167,6 +165,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.send('setAudioSourceVolume', id, volume);
     },
 
+    setAudioSourceTracks(id: string, tracks: number): void {
+      ipcRenderer.send('setAudioSourceTracks', id, tracks);
+    },
+
     setForceMono(enabled: boolean) {
       ipcRenderer.send('setForceMono', enabled);
     },
@@ -191,32 +193,12 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.send('reconfigureOverlay');
     },
 
-    reconfigureCloud() {
-      ipcRenderer.send('reconfigureCloud');
-    },
-
     getSensibleEncoderDefault(): Promise<string> {
       return ipcRenderer.invoke('getSensibleEncoderDefault');
     },
 
-    refreshCloudGuilds() {
-      ipcRenderer.send('refreshCloudGuilds');
-    },
-
-    getOrCreateChatCorrelator(video: RendererVideo): Promise<string> {
-      return ipcRenderer.invoke('getOrCreateChatCorrelator', video);
-    },
-
-    getChatMessages(correlator: string): Promise<TChatMessageWithId[]> {
-      return ipcRenderer.invoke('getChatMessages', correlator);
-    },
-
-    postChatMessage(correlator: string, message: string) {
-      ipcRenderer.send('postChatMessage', correlator, message);
-    },
-
-    deleteChatMessage(id: number) {
-      ipcRenderer.send('deleteChatMessage', id);
+    getHardwareAcceleration(): Promise<boolean> {
+      return ipcRenderer.invoke('getHardwareAcceleration');
     },
 
     toggleManualRecording() {

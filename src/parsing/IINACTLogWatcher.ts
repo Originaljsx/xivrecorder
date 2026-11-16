@@ -5,8 +5,6 @@
  * naming pattern Network_[version]_[YYYYMMDD].log. This watcher detects
  * the newest log file, reads new bytes as they're appended, parses them
  * into ACTLogLine objects, and emits events keyed by line type.
- *
- * Adapted from wow-recorder's CombatLogWatcher.
  */
 import { EventEmitter } from 'events';
 import fs, { watch, FSWatcher } from 'fs';
@@ -211,18 +209,26 @@ export default class IINACTLogWatcher extends EventEmitter {
 
     if (bytesToRead < 1) return;
 
-    await this.parseFileChunk(fullPath, bytesToRead, startPosition);
-    this.state[fullPath] = { name: fullPath, size: currentSize };
+    // Only advance past complete lines. If IINACT has flushed part of a line,
+    // the remainder is picked up (and parsed whole) on the next read.
+    const consumed = await this.parseFileChunk(
+      fullPath,
+      bytesToRead,
+      startPosition,
+    );
+
+    this.state[fullPath] = { name: fullPath, size: startPosition + consumed };
   }
 
   /**
-   * Read a chunk of bytes from a file and emit parsed log lines.
+   * Read a chunk of bytes from a file and emit parsed log lines. Returns the
+   * number of bytes consumed, which excludes any trailing partial line.
    */
   private async parseFileChunk(
     file: string,
     bytes: number,
     position: number,
-  ) {
+  ): Promise<number> {
     const buffer = Buffer.alloc(bytes);
     const handle = await open(file, 'r');
 
@@ -241,7 +247,19 @@ export default class IINACTLogWatcher extends EventEmitter {
       await close(handle);
     }
 
+    // Split on the last newline byte, this also avoids ever splitting a
+    // multi-byte UTF-8 character (player names, zone names) in half.
+    const lastNewline = buffer.lastIndexOf(0x0a);
+
+    if (lastNewline === -1) {
+      // No complete line yet, wait for more data.
+      return 0;
+    }
+
+    const consumed = lastNewline + 1;
+
     const lines = buffer
+      .subarray(0, consumed)
       .toString('utf-8')
       .split('\n')
       .map((s) => s.trim())
@@ -252,6 +270,7 @@ export default class IINACTLogWatcher extends EventEmitter {
     }
 
     this.resetTimeout();
+    return consumed;
   }
 
   /**

@@ -1,5 +1,5 @@
 import { CellContext } from '@tanstack/react-table';
-import { CloudStatus, RendererVideo } from 'main/types';
+import { RendererVideo } from 'main/types';
 import {
   getVideoResultText,
   getResultColor,
@@ -11,7 +11,7 @@ import {
   getPlayerJobId,
   getJobRoleColor,
   getJobAbbreviation,
-  povDiskFirstNameSort,
+  povNameSort,
 } from 'renderer/rendererutils';
 import { Box, Checkbox } from '@mui/material';
 import { Language, Phrase } from 'localisation/phrases';
@@ -86,11 +86,9 @@ export const populateActivityCell = (
 export const populateDetailsCell = (
   ctx: CellContext<RendererVideo, unknown>,
   language: Language,
-  cloudStatus: CloudStatus,
   setVideoState: Dispatch<SetStateAction<RendererVideo[]>>,
 ) => {
   const video = ctx.getValue() as RendererVideo;
-  const { write, del } = cloudStatus;
 
   const renderProtectedIcon = () => {
     // If any videos in our selection are not protected, then the button's
@@ -98,22 +96,12 @@ export const populateDetailsCell = (
     const toProtect = [video, ...video.multiPov];
     const lock = !toProtect.every((v) => v.isProtected);
 
-    // Disable the protect button if there are no selected viewpoints, or if
-    // the action is to unprotect and we don't have delete permissions.
-    const noPermission = !del && !lock && toProtect.some((v) => v.cloud);
-    const disabled = noPermission || toProtect.length < 1;
-
+    const disabled = toProtect.length < 1;
     const icon = lock ? <LockOpen size={20} /> : <LockKeyhole size={20} />;
 
-    let tooltip = '';
-
-    if (noPermission) {
-      tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-    } else if (lock) {
-      tooltip = getLocalePhrase(language, Phrase.StarSelected);
-    } else {
-      tooltip = getLocalePhrase(language, Phrase.UnstarSelected);
-    }
+    const tooltip = lock
+      ? getLocalePhrase(language, Phrase.StarSelected)
+      : getLocalePhrase(language, Phrase.UnstarSelected);
 
     const toggleProtected = (e: React.MouseEvent<HTMLButtonElement>) => {
       stopPropagation(e);
@@ -128,10 +116,8 @@ export const populateDetailsCell = (
         const state = [...prev];
 
         state.forEach((rv) => {
-          // A video is uniquely identified by its name and storage type.
-          const match = toProtect.find(
-            (v) => v.videoName === rv.videoName && v.cloud === rv.cloud,
-          );
+          // A video is uniquely identified by its name.
+          const match = toProtect.find((v) => v.videoName === rv.videoName);
 
           if (match) {
             rv.isProtected = lock;
@@ -160,14 +146,10 @@ export const populateDetailsCell = (
 
   const renderTagIcon = () => {
     const toTag = [video, ...video.multiPov];
-    const noPermission = !write && toTag.some((v) => v.cloud);
 
     let tag = '';
     let icon = <MessageSquare size={18} />;
-
-    let tooltip = noPermission
-      ? getLocalePhrase(language, Phrase.GuildNoPermission)
-      : getLocalePhrase(language, Phrase.TagButtonTooltip);
+    let tooltip = getLocalePhrase(language, Phrase.TagButtonTooltip);
 
     const foundTag = toTag.map((v) => v.tag).find((t) => t);
 
@@ -191,7 +173,7 @@ export const populateDetailsCell = (
             setVideoState={setVideoState}
             language={language}
           >
-            <Button variant="ghost" size="xs" disabled={noPermission}>
+            <Button variant="ghost" size="xs">
               {icon}
             </Button>
           </TagDialog>
@@ -216,7 +198,7 @@ export const populateViewpointCell = (
 
   // Prioritize the any videos with a disk copy as that's likely to be the
   // local users viewpoint so most relevant to them.
-  const povs = [video, ...video.multiPov].sort(povDiskFirstNameSort);
+  const povs = [video, ...video.multiPov].sort(povNameSort);
   const first = povs[0];
 
   const { player } = first;

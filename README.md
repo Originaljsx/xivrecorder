@@ -6,10 +6,6 @@ It currently supports recording:
 - **Crystalline Conflict** (CC) PvP matches
 - **Savage & Ultimate** raid boss pulls (each pull is a separate recording)
 
-## Credits
-
-This project is built on top of [Warcraft Recorder](https://github.com/aza547/wow-recorder) by [aza547](https://github.com/aza547), adapted for FFXIV with permission. The OBS-based recording engine and UI framework come from that project. Thank you to aza547 and all wow-recorder contributors for making this possible.
-
 ## Important
 
 - **FFXIV does not have built-in combat logging.** XIV Recorder relies on a third-party parser (IINACT or ACT) to generate log files that it reads from. You must have one of these installed and running for XIV Recorder to work.
@@ -88,8 +84,42 @@ official result and the full end-of-match scoreboard into every CC recording.
 5. Enable the content types you want to record (Crystalline Conflict, Raids).
 6. Click the **Scene** button to configure OBS recording settings:
    - Select your desired output resolution.
-   - Add your speakers and/or microphone if you want audio.
-   - Select a hardware encoder if available (recommended for performance).
+   - Set up audio (see [Audio](#audio) below).
+   - Select a hardware encoder if available (recommended for performance, see
+     [Video quality and file size](#video-quality-and-file-size)).
+
+### Audio
+
+On the **Scene** page, under **Audio**, add one or more sources:
+
+| Source | Records |
+|---|---|
+| **FFXIV Game Audio** | Only the sound from Final Fantasy XIV. Discord, music and notifications are left out. Works even if the game isn't running yet. Needs Windows 10 (2004) or newer. |
+| **Speaker** | Everything your PC plays (game, Discord, music, ...). |
+| **Microphone** | Your voice. Supports push to talk, noise suppression and forcing mono. |
+| **Application** | Any other single program, e.g. Discord only. |
+
+For game sound only, remove the Speaker source and add **FFXIV Game Audio**. For game sound plus
+your voice, add **FFXIV Game Audio** and a **Microphone**.
+
+Each source can be routed to any of six audio **tracks** in the recording. Track 1 is what you
+hear when playing back in XIV Recorder (and in most players), so keep every source you want to
+hear on track 1. The other tracks are handy in a video editor, e.g. put the game on tracks 1 and
+2 and your microphone on tracks 1 and 3 to get a full mix plus separate game and voice tracks.
+
+### Video quality and file size
+
+- **Encoder**: hardware encoders (NVIDIA, AMD, Intel) barely affect your in-game FPS and are
+  strongly recommended. **H.265 (HEVC)** and **AV1** produce noticeably smaller files than
+  H.264 at the same quality; they need **Hardware Rendering** enabled (Settings → Application)
+  to play back inside XIV Recorder. The wand button picks a sensible default for your PC.
+- **FPS**: 60 gives smooth playback; 30 roughly halves file size and encoder load.
+- **Quality**: High is a good balance. Each step down saves a good chunk of disk space.
+- **Max Disk Storage**: the oldest unlocked recordings are deleted automatically to stay under
+  the limit. Lock a recording (padlock button) to keep it forever.
+
+Each recording's metadata stores the encoder used and the file size, which makes it easy to
+compare settings.
 
 ### 4. Testing It Works
 
@@ -189,4 +219,9 @@ Please [create an issue](https://github.com/Originaljsx/xivrecorder/issues) if y
 
 If you're interested in contributing, feel free to submit a PR or open an issue to discuss changes.
 
-This project is adapted from [wow-recorder](https://github.com/aza547/wow-recorder). The recording functionality is powered by [OBS](https://obsproject.com/) via the [noobs](https://github.com/niclas-AE/noobs) native Node.js bindings.
+## Acknowledgements
+
+XIV Recorder started as a fork of Warcraft Recorder by aza547, adapted for FFXIV with
+permission. Thank you to its author and contributors. The recording functionality is powered by
+[OBS](https://obsproject.com/) via the [noobs](https://www.npmjs.com/package/noobs) native
+Node.js bindings.

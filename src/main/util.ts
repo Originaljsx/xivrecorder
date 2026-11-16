@@ -23,16 +23,14 @@ import {
   RendererVideo,
   ObsAudioConfig,
   ErrorReport,
-  CloudSignedMetadata,
 } from './types';
 import { VideoCategory } from '../types/VideoCategory';
 import ConfigService from 'config/ConfigService';
-import { AxiosError } from 'axios';
 import { send } from './main';
 import { Readable } from 'stream';
 import { ESupportedEncoders } from './obsEnums';
 import Recorder from './Recorder';
-// FFXIV constants (no WoW install search paths needed)
+// FFXIV constants
 import { defaultIINACTLogPath } from './constants';
 
 /**
@@ -40,24 +38,6 @@ import { defaultIINACTLogPath } from './constants';
  */
 const fixPathWhenPackaged = (p: string) => {
   return p.replace('app.asar', 'app.asar.unpacked');
-};
-
-/**
- * Setup logging.
- *
- * This works by overriding console log methods. All console log method will
- * go to both the console if it exists, and a file on disk.
- *
- * This only applies to main process console logs, not the renderer logs.
- */
-const setupApplicationLogging = () => {
-  const log = require('electron-log');
-  const date = new Date().toISOString().slice(0, 10);
-  const logRelativePath = `logs/XIVRecorder-${date}.log`;
-  const logPath = fixPathWhenPackaged(path.join(__dirname, logRelativePath));
-  log.transports.file.resolvePath = () => logPath;
-  Object.assign(console, log.functions);
-  return path.dirname(logPath);
 };
 
 const { exec } = require('child_process');
@@ -149,14 +129,6 @@ const getMetadataFileNameForVideo = (video: string) => {
 };
 
 /**
- * The Korean build of WCR had translated video categories. Now that
- * they are going to use the main build with the localisation feature,
- * this translates them back to english so we can process them. This is
- * purely to bridge the gap, and in theory could be removed in the future.
- */
-// Korean category conversion removed — not needed for FFXIV.
-
-/**
  * Get the metadata object for a video from the accompanying JSON file.
  */
 const getMetadataForVideo = async (video: string) => {
@@ -242,7 +214,6 @@ const loadVideoDetailsDisk = async (
       mtime: video.mtime,
       videoSource: video.name,
       isProtected: Boolean(metadata.protected),
-      cloud: false,
       multiPov: [],
       uniqueId,
     };
@@ -361,7 +332,6 @@ const getAssetPath = (...paths: string[]): string => {
   return path.join(RESOURCES_PATH, ...paths);
 };
 
-// getWowFlavour removed — not needed for FFXIV.
 
 /**
  * Adds an error to the error report component.
@@ -608,9 +578,7 @@ const checkDisk = async (dir: string, req: number) => {
 
 /**
  * We use start as the preference here: the genuine start date of the activity.
- * It was only added for cloud support, so if it doesn't exist, fallback to
- * the mtime which is particularly worse on cloud storage. It worked fine on
- * disk storage where there is no upload delay.
+ * If it doesn't exist, fallback to the file mtime.
  */
 const reverseChronologicalVideoSort = (A: RendererVideo, B: RendererVideo) => {
   const metricA = A.start ? A.start : A.mtime;
@@ -640,57 +608,15 @@ const markForVideoForDelete = async (videoPath: string) => {
     metadata.delete = true;
     await writeMetadataFile(videoPath, metadata);
   } catch (error) {
-    // This isn't a total disaster, but might cause some duplicates to
-    // display in the UI; i.e. a cloud and disk version of the same video.
-    // Just log it so it's diagnosable, a user could fix it easily with a
-    // manual delete.
+    // This isn't a total disaster, the video may reappear in the UI until
+    // it is deleted. Just log it so it's diagnosable, a user could fix it
+    // easily with a manual delete.
     console.error(
       '[Util] Failed to mark a video for deletion',
       videoPath,
       String(error),
     );
   }
-};
-
-/**
- * Convert a RendererVideo type to a Metadata type, used when downloading
- * videos from cloud to disk.
- */
-const rendererVideoToMetadata = (video: RendererVideo) => {
-  const data = video as any;
-  delete data.videoSource;
-  delete data.videoName;
-  delete data.mtime;
-  delete data.isProtected;
-  delete data.cloud;
-  delete data.multiPov;
-  delete data.uniqueId;
-  return data as Metadata;
-};
-
-/**
- * Convert a CloudSignedMetadata object to a RendererVideo object.
- */
-const cloudSignedMetadataToRendererVideo = (metadata: CloudSignedMetadata) => {
-  // For cloud videos, the signed URLs are the sources.
-  const videoSource = metadata.signedVideoKey;
-  const uniqueId = `${metadata.videoName}-cloud`;
-
-  // We don't want the signed properties themselves.
-  const mutable: any = metadata;
-  delete mutable.signedVideoKey;
-
-  const video: RendererVideo = {
-    ...mutable,
-    videoSource,
-    multiPov: [],
-    cloud: true,
-    isProtected: Boolean(mutable.protected),
-    mtime: 0,
-    uniqueId,
-  };
-
-  return video;
 };
 
 /**
@@ -726,7 +652,6 @@ const isFolderOwned = async (dir: string) => {
  * indicate our ownership. This does the necessary checks that it doesn't contain
  * files we don't recognise first, to avoid the case where a user sets a storage
  * path that contains other files which XIV Recorder may go on to delete.
- * More context: https://github.com/aza547/wow-recorder/issues/400.
  */
 const takeOwnershipStorageDir = async (dir: string) => {
   const helptext =
@@ -787,7 +712,6 @@ const takeOwnershipStorageDir = async (dir: string) => {
  * indicate our ownership. This does the necessary checks that it doesn't contain
  * files we don't recognise first, to avoid the case where a user sets a buffer
  * storage path that contains other files which XIV Recorder may go on to delete.
- * More context: https://github.com/aza547/wow-recorder/issues/400.
  */
 const takeOwnershipBufferDir = async (dir: string) => {
   const helptext =
@@ -833,26 +757,11 @@ const takeOwnershipBufferDir = async (dir: string) => {
 };
 
 /**
- * Convience method to log an axios error.
- */
-const logAxiosError = (msg: string, error: AxiosError) => {
-  console.error(msg, {
-    message: error.message,
-    status: error.status,
-    code: error.code,
-    cause: error.cause,
-    url: error.config?.url,
-    rspStatus: error.response?.status,
-    rspData: error.response?.data,
-  });
-};
-
-/**
  * Custom protocol that enables the frontend to request MP4 files from disk.
  */
 const handleSafeVodRequest = async (request: Request) => {
   try {
-    const sliced = request.url.toString().slice('vod://wcr/'.length);
+    const sliced = request.url.toString().slice('vod://xivr/'.length);
     const requestUrl = decodeURIComponent(sliced);
 
     if (!requestUrl) {
@@ -1043,7 +952,6 @@ const runFirstTimeSetupActionsNoObs = () => {
 export {
   detectIINACTLogPath,
   hasNetworkLogs,
-  setupApplicationLogging,
   writeMetadataFile,
   deleteVideoDisk,
   openSystemExplorer,
@@ -1069,15 +977,12 @@ export {
   reverseChronologicalVideoSort,
   areDatesWithinSeconds,
   markForVideoForDelete,
-  rendererVideoToMetadata,
-  cloudSignedMetadataToRendererVideo,
   exists,
   isFolderOwned,
   takeOwnershipStorageDir,
   takeOwnershipBufferDir,
   isManualRecordHotKey,
   delayedDeleteVideo,
-  logAxiosError,
   handleSafeVodRequest,
   runFirstTimeSetupActionsObs,
   runFirstTimeSetupActionsNoObs,
