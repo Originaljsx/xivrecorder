@@ -804,7 +804,6 @@ export default class Recorder extends EventEmitter {
         settings['window'] = src.device;
         settings['priority'] = 2; // Executable matching
         noobs.SetSourceSettings(name, settings);
-        noobs.SetSourceVolume(name, src.volume);
       } else if (src.type !== AudioSourceType.PROCESS) {
         const properties = noobs.GetSourceProperties(name);
         const available = properties.find((prop: any) => prop.name === 'device_id');
@@ -849,19 +848,22 @@ export default class Recorder extends EventEmitter {
         // Finish configuring the source.
         settings['device_id'] = match.value;
         noobs.SetSourceSettings(name, settings);
-        noobs.SetSourceVolume(name, src.volume);
       } else {
         // Can happen if a user adds an app source but never selects a window.
         console.warn('[Recorder] Unable to configure audio source', src);
       }
 
+      // Apply the volume to every source, including an app source with no
+      // window picked yet, so a saved mute always holds.
+      noobs.SetSourceVolume(name, src.muted ? 0 : src.volume);
       this.configureAudioSourceTracks(name, src.tracks ?? defaultAudioTrack);
       noobs.AddSourceToScene(name);
       this.audioSources.push({ ...src, id: name });
     });
 
+    // Muted mics record silence, so don't report the mic as live for them.
     const mics = this.audioSources.filter(
-      (src) => src.type === AudioSourceType.INPUT,
+      (src) => src.type === AudioSourceType.INPUT && !src.muted,
     );
 
     if (config.pushToTalk) {

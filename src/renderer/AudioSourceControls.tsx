@@ -40,11 +40,6 @@ import {
 } from './components/Select/Select';
 
 import { ObsListItem } from 'noobs';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from './components/Popover/Popover';
 import { Phrase } from 'localisation/phrases';
 import {
   defaultAudioTrack,
@@ -94,8 +89,6 @@ const AudioSourceControls = (props: IProps) => {
     Record<string, number>
   >({});
 
-  // Volume popover state. We only allow one to be open at a time.
-  const [volumePopoverSourceId, setVolumePopoverSourceId] = useState('');
 
   // We will block adding new sources if we have a partially
   // configured process source (speakers and mics can both
@@ -457,10 +450,12 @@ const AudioSourceControls = (props: IProps) => {
     const choice = sourceChoices[src.id].find((item) => item.value === device);
     if (!choice) return;
 
-    const clone = [...config.audioSources];
-    clone[idx] = { ...src, device, friendly: choice.name };
-
-    setConfig((prev) => ({ ...prev, audioSources: clone }));
+    setConfig((prev) => ({
+      ...prev,
+      audioSources: prev.audioSources.map((s) =>
+        s.id === src.id ? { ...s, device, friendly: choice.name } : s,
+      ),
+    }));
 
     if (src.type === AudioSourceType.PROCESS) {
       ipc.setAudioSourceWindow(src.id, device);
@@ -637,11 +632,10 @@ const AudioSourceControls = (props: IProps) => {
     const idx = config.audioSources.indexOf(src);
     if (idx === -1) return;
 
-    setConfig((prev) => {
-      const clone = [...prev.audioSources];
-      clone.splice(idx, 1);
-      return { ...prev, audioSources: clone };
-    });
+    setConfig((prev) => ({
+      ...prev,
+      audioSources: prev.audioSources.filter((s) => s.id !== src.id),
+    }));
 
     setSourceChoices((prev) => {
       const clone = { ...prev };
@@ -655,7 +649,6 @@ const AudioSourceControls = (props: IProps) => {
       return clone;
     });
 
-    setVolumePopoverSourceId('');
     ipc.deleteAudioSource(src.id);
   };
 
@@ -667,27 +660,81 @@ const AudioSourceControls = (props: IProps) => {
     );
   };
 
-  const toggleVolumePopover = (src: AudioSource, open: boolean) => {
-    setVolumePopoverSourceId(open ? src.id : '');
+  const updateSource = (src: AudioSource, changes: Partial<AudioSource>) => {
+    setConfig((prev) => ({
+      ...prev,
+      audioSources: prev.audioSources.map((s) =>
+        s.id === src.id ? { ...s, ...changes } : s,
+      ),
+    }));
   };
 
-  const renderSourceRow = (src: AudioSource) => {
-    const idx = config.audioSources.indexOf(src);
+  const toggleMute = (src: AudioSource) => {
+    const muted = !src.muted;
+    // Unmuting a source left at 0% would look like nothing happened.
+    const volume = !muted && src.volume === 0 ? 1 : src.volume;
+    updateSource(src, { muted, volume });
+    ipc.setAudioSourceVolume(src.id, muted ? 0 : volume);
+  };
+
+  const setSourceVolume = (src: AudioSource, percent: number) => {
+    const volume = percent / 100;
+    // Moving the slider unmutes, like most volume mixers.
+    updateSource(src, { volume, muted: false });
+    ipc.setAudioSourceVolume(src.id, volume);
+  };
+
+  const renderSourceVolume = (src: AudioSource) => {
     const val = Math.round(src.volume * 100);
+    const muted = Boolean(src.muted);
     let icon;
 
-    if (val === 0) {
-      icon = <VolumeX />;
+    if (muted || val === 0) {
+      icon = <VolumeX color={muted ? 'red' : undefined} />;
     } else if (val < 50) {
       icon = <Volume1 />;
     } else {
       icon = <Volume2 />;
     }
 
-    const magnitude = sourceMagnitude[src.id] ?? 0;
+    const tooltip = getLocalePhrase(
+      language,
+      muted ? Phrase.UnmuteSourceTooltip : Phrase.MuteSourceTooltip,
+    );
 
     return (
-      <tr key={idx}>
+      <div className="flex items-center gap-x-2">
+        <Tooltip content={tooltip} side="top">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => toggleMute(src)}
+            aria-label={tooltip}
+            aria-pressed={muted}
+          >
+            {icon}
+          </Button>
+        </Tooltip>
+        <Slider
+          value={[val]}
+          max={100}
+          step={1}
+          withTooltip={false}
+          className={`w-[90px] ${muted ? 'opacity-40' : ''}`}
+          onValueChange={(newValue) => setSourceVolume(src, newValue[0])}
+        />
+        <span className="text-sm text-foreground-lighter tabular-nums w-[40px] text-right">
+          {muted ? '-' : `${val}%`}
+        </span>
+      </div>
+    );
+  };
+
+  const renderSourceRow = (src: AudioSource) => {
+    const magnitude = src.muted ? 0 : sourceMagnitude[src.id] ?? 0;
+
+    return (
+      <tr key={src.id}>
         <td className="px-2">{renderSourceType(src)}</td>
         <td className="px-2">{renderSourceDeviceSelect(src)}</td>
         <td className="px-2">{renderSourceTrackSelect(src)}</td>
@@ -702,39 +749,7 @@ const AudioSourceControls = (props: IProps) => {
             </div>
           </div>
         </td>
-        <td>
-          <Popover
-            open={src.id === volumePopoverSourceId}
-            onOpenChange={(open) => toggleVolumePopover(src, open)}
-          >
-            <PopoverTrigger asChild>
-              <Button variant="ghost">{icon}</Button>
-            </PopoverTrigger>
-            <PopoverContent className="border-bg" side="right" align="center">
-              <Slider
-                value={[val]}
-                max={100}
-                step={1}
-                onValueChange={(newValue) => {
-                  setConfig(() => {
-                    const idx = config.audioSources.indexOf(src);
-                    if (idx === -1) return config;
-                    const newSources = [...config.audioSources];
-
-                    newSources[idx] = {
-                      ...newSources[idx],
-                      volume: newValue[0] / 100,
-                    };
-
-                    return { ...config, audioSources: newSources };
-                  });
-
-                  ipc.setAudioSourceVolume(src.id, newValue[0] / 100);
-                }}
-              />
-            </PopoverContent>
-          </Popover>
-        </td>
+        <td className="px-2">{renderSourceVolume(src)}</td>
         <td>{renderDeleteSourceButton(src)}</td>
       </tr>
     );
@@ -810,7 +825,7 @@ const AudioSourceControls = (props: IProps) => {
             {header(Phrase.SourceHeading)}
             {header(Phrase.AudioTracksLabel, Phrase.AudioTracksDescription)}
             <th />
-            <th />
+            {header(Phrase.AudioVolumeLabel)}
             <th />
           </tr>
         </thead>

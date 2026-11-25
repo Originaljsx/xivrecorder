@@ -102,6 +102,9 @@ On the **Scene** page, under **Audio**, add one or more sources:
 For game sound only, remove the Speaker source and add **FFXIV Game Audio**. For game sound plus
 your voice, add **FFXIV Game Audio** and a **Microphone**.
 
+Click a source's speaker icon to mute or unmute it. A muted source keeps its settings and volume,
+it just records silence. Changing its volume also unmutes it.
+
 Each source can be routed to any of six audio **tracks** in the recording. Track 1 is what you
 hear when playing back in XIV Recorder (and in most players), so keep every source you want to
 hear on track 1. The other tracks are handy in a video editor, e.g. put the game on tracks 1 and

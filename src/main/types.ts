@@ -279,6 +279,11 @@ type AudioSource = {
   device?: string | number;
   volume: number;
   /**
+   * Muted sources stay in the scene but are recorded silent. The volume is
+   * kept so unmuting restores it. Undefined means not muted.
+   */
+  muted?: boolean;
+  /**
    * Bitmask of the OBS audio tracks this source is mixed into. There are
    * exactly six tracks; track 1 is the one played back in the app. Undefined
    * means track 1 only.
